@@ -2,13 +2,20 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import uuid
 from dataclasses import dataclass
-from typing import AsyncIterator, Dict, Any, List, Optional
+from typing import AsyncIterator, Dict, Any, List, Optional, Set
+from urllib.parse import quote, quote_plus, urlparse, parse_qs
 
 from catalog.adapters.base import Adapter, AdapterConfig, Capabilities
 from catalog.models import GameRecord
-from catalog.normalize import clean_title, strip_edition_noise, price_to_string
-from catalog.http import DomainLimiter
+from catalog.normalize import (
+   clean_title,
+   strip_edition_noise,
+   price_to_string,
+   normalize_platforms,
+   normalize_rating,
+)
 
 # Notes:
 # - PSN's public surface has changed multiple times (legacy "valkyrie" / "chihiro",
@@ -21,21 +28,23 @@ from catalog.http import DomainLimiter
 #
 # - Out of the box, the fallback will work for most list pages that embed Next.js data.
 
-# Per-domain limiter (tweak via config.rps if needed)
-PSN_LIMIT = DomainLimiter(2.0)
-
 _JSONLD_RE = re.compile(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.S | re.I)
 _NEXT_RE   = re.compile(r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>', re.S | re.I)
+_UUID_RE   = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+CATEGORY_GRID_HASH = "257713466fc3264850aa473409a29088e3a4115e6e69e9fb3e061c8dd5b9f5c6"
 
 @dataclass(slots=True)
 class PSNEndpoints:
-   # If your region exposes a JSON search API, put it here (format string).
-   # Example pattern (adjust as your region allows):
-   # "https://store.playstation.com/api/v1/search?query={query}&size={size}&country={country}&language={lang}&page={page}"
+   # GraphQL category grid endpoint and known category ids (if any)
+   category_grid_api: str = "https://web.np.playstation.com/api/graphql/v1/op"
+   category_ids: Optional[List[str]] = None
+
+   # Optional legacy search endpoint (falls back to HTML parsing otherwise)
    search_api: Optional[str] = None
 
    # Seed listing pages (Next.js pages) to crawl and parse (__NEXT_DATA__/JSON-LD)
-   seed_pages: List[str] = None
+   seed_pages: List[str] | None = None
 
 def _default_seed_pages(country: str, locale: str) -> List[str]:
    # These are general directory pages that often embed large product lists.
@@ -56,30 +65,75 @@ class PSNAdapter(Adapter):
                 endpoints: PSNEndpoints | None = None, **kw):
       super().__init__(config=config, **kw)
       self.endpoints = endpoints or PSNEndpoints(
-         search_api=None,  # fill in if you have a working JSON endpoint
+         category_ids=None,
+         search_api=(
+            "https://store.playstation.com/api/productsearch/v2"
+            "?query={query}&size={size}&country={country}&language={language}&lang={lang}&offset={offset}"
+         ),
          seed_pages=_default_seed_pages(self.config.country, self.config.locale),
       )
 
    # ---------- public contract ----------
 
    async def iter_games(self) -> AsyncIterator[GameRecord]:
-      # Strategy A: Search API (optional). Demonstrated with A-Z seeds if provided.
+      seen: Set[str | tuple[str, str]] = set()
+      discovered_category_ids: Set[str] = set(self.endpoints.category_ids or [])
+
+      # Strategy A: GraphQL category grids (if ids are known up-front)
+      for cid in list(discovered_category_ids):
+         async for rec in self._iter_category_grid(cid):
+            if rec and self._mark_seen(rec, seen):
+               yield rec
+         await asyncio.sleep(0.1)
+
+      # Strategy B: Search API (optional). Demonstrated with A-Z seeds if provided.
       if self.endpoints.search_api:
          # paginate letters 'a'..'z' (tweak to your needs)
          for ch in "abcdefghijklmnopqrstuvwxyz":
             async for rec in self._iter_search_api(query=ch, page_size=50):
-               if rec:  # could be None if malformed
+               if rec and self._mark_seen(rec, seen):  # could be None if malformed
                   yield rec
             # brief polite pause between seed letters
             await asyncio.sleep(0.1)
 
-      # Strategy B: Fallback to HTML pages with embedded JSON
+      # Strategy C: Fallback to HTML pages with embedded JSON
       for url in self.endpoints.seed_pages or []:
-         async for rec in self._iter_list_page(url):
-            if rec:
+         async for rec in self._iter_seed_page(url, discovered_category_ids):
+            if rec and self._mark_seen(rec, seen):
                yield rec
          # be nice between heavy pages
          await asyncio.sleep(0.2)
+
+      # Strategy D: GraphQL category grids discovered from seed pages
+      for cid in sorted(discovered_category_ids):
+         if cid in (self.endpoints.category_ids or []):
+            # already processed above
+            continue
+         async for rec in self._iter_category_grid(cid):
+            if rec and self._mark_seen(rec, seen):
+               yield rec
+         await asyncio.sleep(0.1)
+
+   def _mark_seen(self, rec: GameRecord, seen: Set[str | tuple[str, str]]) -> bool:
+      key: str | tuple[str, str]
+      if rec.uuid:
+         key = rec.uuid
+      elif rec.href:
+         key = rec.href
+      else:
+         key = (rec.name, rec.store)
+      if key in seen:
+         return False
+      seen.add(key)
+      return True
+
+   async def _iter_seed_page(self, url: str, discovered_category_ids: Set[str]) -> AsyncIterator[Optional[GameRecord]]:
+      html = await self.get_text(url, headers={"Accept": "text/html"}, params=None)
+      discovered_category_ids.update(self._extract_category_ids(html))
+      for rec in self._parse_next_data(html, base_url=url):
+         yield rec
+      for rec in self._parse_jsonld(html, base_url=url):
+         yield rec
 
    # ---------- Strategy A: JSON search API (optional) ----------
 
@@ -90,37 +144,81 @@ class PSNAdapter(Adapter):
       """
       assert self.endpoints.search_api, "search_api endpoint template not configured"
 
-      async def fetch_page(page: int, size: int) -> Dict[str, Any]:
-         url = self.endpoints.search_api.format(
-            query=query,
-            size=size,
-            country=self.config.country,
-            lang=self.config.locale,
-            page=page // size,   # adjust math depending on the API contract
-         )
-         js = await self.get_json(url, headers={"Accept": "application/json"})
-         return js
+      headers = {
+         "Accept": "application/json",
+         "X-PSN-Store-Locale": f"{self.config.locale.lower()}-{self.config.country.lower()}",
+         "Referer": f"https://store.playstation.com/{self.config.locale.lower()}-{self.config.country.lower()}",
+      }
 
-      def has_more(js: Dict[str, Any]) -> bool:
-         # Heuristic: many APIs return total hits and current offset/page.
-         # Replace with whatever your endpoint provides.
-         total = (js.get("totalResults") or js.get("total") or 0)
-         items = (js.get("results") or js.get("items") or [])
-         offset = (js.get("offset") or js.get("page", 0) * page_size)
-         return (offset + len(items)) < total
-
-      page = 0
+      locale = self.config.locale.replace("_", "-")
+      language = locale.split("-")[0]
+      offset = 0
       while True:
-         js = await fetch_page(page, page_size)
-         items = (js.get("results") or js.get("items") or [])
-         for it in items:
+         url = self.endpoints.search_api.format(
+            query=quote_plus(query),
+            size=page_size,
+            country=self.config.country.upper(),
+            language=language,
+            lang=locale,
+            offset=offset,
+         )
+         js = await self.get_json(url, headers=headers)
+         items = js.get("products") or js.get("results") or js.get("items") or []
+         if isinstance(items, dict):
+            items = items.get("products") or []
+         count = 0
+         for it in items or []:
             rec = self._normalize_api_item(it)
             if rec:
+               count += 1
                yield rec
-         if not has_more(js):
-            break
-         page += page_size
-         await asyncio.sleep(0.05)
+         next_offset = None
+         links = js.get("links") or {}
+         if isinstance(links, dict):
+            for key in ("next", "nextPage", "nextPageUrl"):
+               href = links.get(key)
+               if not isinstance(href, str):
+                  continue
+               try:
+                  parsed = urlparse(href)
+               except Exception:
+                  parsed = None
+               if not parsed:
+                  continue
+               qs = parse_qs(parsed.query)
+               for qk in ("offset", "start"):
+                  if qk in qs and qs[qk]:
+                     try:
+                        next_offset = int(qs[qk][0])
+                        break
+                     except Exception:
+                        next_offset = None
+               if next_offset is None and "page" in qs and qs["page"]:
+                  try:
+                     next_offset = int(qs["page"][0]) * page_size
+                  except Exception:
+                     next_offset = None
+               if next_offset is not None:
+                  break
+            if next_offset is not None:
+               offset = next_offset
+               await asyncio.sleep(0.05)
+               continue
+         total = js.get("total_results") or js.get("totalResults") or js.get("total")
+         if total is not None:
+            try:
+               total = int(total)
+            except Exception:
+               total = None
+         if total is not None and (offset + count) < total:
+            offset += count or page_size
+            await asyncio.sleep(0.05)
+            continue
+         if count >= page_size:
+            offset += count
+            await asyncio.sleep(0.05)
+            continue
+         break
 
    def _normalize_api_item(self, it: Dict[str, Any]) -> Optional[GameRecord]:
       """
@@ -174,7 +272,7 @@ class PSNAdapter(Adapter):
             platforms.append(p.get("name") or p.get("platform") or "")
          else:
             platforms.append(str(p))
-      platforms = [p for p in platforms if p]
+      platforms = normalize_platforms(platforms)
 
       # rating (ESRB-like)
       rating = None
@@ -183,6 +281,8 @@ class PSNAdapter(Adapter):
          rating = ratings.get("display") or ratings.get("ageRating")
       elif isinstance(ratings, list) and ratings:
          rating = (ratings[0].get("display") or ratings[0].get("ageRating"))
+
+      rating = normalize_rating(rating)
 
       uuid = (
          it.get("id") or it.get("skuId") or it.get("productId") or
@@ -200,24 +300,169 @@ class PSNAdapter(Adapter):
          href=href,
          uuid=str(uuid) if uuid else None,
          platforms=platforms,
-         rating=(rating.lower() if isinstance(rating, str) else None),
+         rating=rating,
          type="game",
       )
 
    # ---------- Strategy B: HTML + embedded JSON ----------
 
-   async def _iter_list_page(self, url: str) -> AsyncIterator[Optional[GameRecord]]:
-      """
-      Fetch a Next.js listing page and parse embedded product data.
-      We look for __NEXT_DATA__ first, then JSON-LD as a fallback.
-      """
-      html = await self.get_text(url, headers={"Accept": "text/html"}, params=None)
-      # First: parse __NEXT_DATA__
-      for rec in self._parse_next_data(html, base_url=url):
-         yield rec
-      # Then: parse JSON-LD (often individual product cards include ld+json)
-      for rec in self._parse_jsonld(html, base_url=url):
-         yield rec
+   async def _iter_category_grid(self, category_id: str, *, page_size: int = 24) -> AsyncIterator[Optional[GameRecord]]:
+      """Iterate products from the categoryGridRetrieve GraphQL endpoint."""
+      base_locale = f"{self.config.locale.lower()}-{self.config.country.lower()}"
+      headers = {
+         "Accept": "application/json",
+         "Content-Type": "application/json",
+         "Origin": "https://store.playstation.com",
+         "Referer": f"https://store.playstation.com/{base_locale}",
+         "X-PSN-Store-Locale-Override": base_locale,
+         "apollographql-client-version": "0.0.1",
+         "x-psn-request-id": str(uuid.uuid4()),
+         "x-psn-correlation-id": str(uuid.uuid4()),
+      }
+
+      offset = 0
+      while True:
+         variables = {
+            "id": category_id,
+            "pageArgs": {"size": page_size, "offset": offset},
+            "sortBy": {"name": "productReleaseDate", "isAscending": False},
+            "filterBy": [],
+            "facetOptions": [],
+         }
+         extensions = {
+            "persistedQuery": {"version": 1, "sha256Hash": CATEGORY_GRID_HASH}
+         }
+         query = (
+            f"{self.endpoints.category_grid_api}?operationName=categoryGridRetrieve"
+            f"&variables={quote(json.dumps(variables, separators=(',', ':')))}"
+            f"&extensions={quote(json.dumps(extensions, separators=(',', ':')))}"
+         )
+
+         js = await self.get_json(query, headers=headers)
+         grid = ((js.get("data") or {}).get("categoryGridRetrieve") or {})
+         products = grid.get("products") or []
+         yielded = 0
+         if isinstance(products, list):
+            for raw in products:
+               rec = self._normalize_category_grid_item(raw)
+               if rec:
+                  yielded += 1
+                  yield rec
+
+         page_info = grid.get("pageInfo") or {}
+         next_offset = page_info.get("nextOffset") if isinstance(page_info, dict) else None
+         total_count = page_info.get("totalCount") if isinstance(page_info, dict) else None
+         has_next = page_info.get("hasNextPage") if isinstance(page_info, dict) else None
+
+         if isinstance(next_offset, int) and next_offset > offset:
+            offset = next_offset
+            await asyncio.sleep(0.1)
+            continue
+
+         if has_next and yielded:
+            offset += yielded
+            await asyncio.sleep(0.1)
+            continue
+
+         if total_count is not None and isinstance(total_count, int) and (offset + yielded) < total_count and yielded:
+            offset += yielded
+            await asyncio.sleep(0.1)
+            continue
+
+         if yielded >= page_size:
+            offset += yielded
+            await asyncio.sleep(0.1)
+            continue
+
+         break
+
+   def _normalize_category_grid_item(self, it: Dict[str, Any]) -> Optional[GameRecord]:
+      name = strip_edition_noise(clean_title(it.get("name") or ""))
+      if not name:
+         return None
+
+      image = self._choose_media_image(it.get("media") or [])
+      href = self._build_product_url(it.get("id"))
+
+      price_obj = it.get("price") or {}
+      price_str: Optional[str] = None
+      if isinstance(price_obj, dict):
+         for key in ("discountedPrice", "basePrice", "strikethroughPrice"):
+            val = price_obj.get(key)
+            if isinstance(val, str) and val:
+               price_str = val
+               break
+         if price_str is None:
+            amount = price_obj.get("value") or price_obj.get("baseValue")
+            currency = price_obj.get("currency") or price_obj.get("baseCurrency")
+            price_str = price_to_string(amount, currency)
+      else:
+         price_str = price_to_string(None, None)
+
+      platforms = normalize_platforms(it.get("platforms") or [])
+      rating = normalize_rating(it.get("localizedStoreDisplayClassification"))
+
+      return GameRecord(
+         store="psn",
+         name=name,
+         price=price_str or "",
+         image=image or "https://store.playstation.com/assets/cover-placeholder.png",
+         href=href,
+         uuid=str(it.get("id")) if it.get("id") else None,
+         platforms=platforms,
+         rating=rating,
+         type="game",
+      )
+
+   def _build_product_url(self, product_id: Optional[str]) -> str:
+      base = f"https://store.playstation.com/{self.config.locale.lower()}-{self.config.country.lower()}"
+      if product_id:
+         return f"{base}/product/{product_id}"
+      return base
+
+   def _choose_media_image(self, media: List[Dict[str, Any]]) -> Optional[str]:
+      priorities = (
+         "MASTER",
+         "GAMEHUB_COVER_ART",
+         "EDITION_KEY_ART",
+         "BACKGROUND",
+         "FOUR_BY_THREE_BANNER",
+         "PORTRAIT_BANNER",
+      )
+      for role in priorities:
+         for item in media:
+            if not isinstance(item, dict):
+               continue
+            if item.get("type") == "IMAGE" and item.get("role") == role and item.get("url"):
+               return str(item["url"])
+      for item in media:
+         if isinstance(item, dict) and item.get("type") == "IMAGE" and item.get("url"):
+            return str(item["url"])
+      return None
+
+   def _extract_category_ids(self, html: str) -> Set[str]:
+      ids: Set[str] = set()
+      m = _NEXT_RE.search(html)
+      if not m:
+         return ids
+      try:
+         js = json.loads(m.group(1))
+      except Exception:
+         return ids
+
+      def walk(o: Any):
+         if isinstance(o, dict):
+            candidate = o.get("categoryId") or o.get("id")
+            if isinstance(candidate, str) and _UUID_RE.match(candidate):
+               ids.add(candidate)
+            for v in o.values():
+               walk(v)
+         elif isinstance(o, list):
+            for v in o:
+               walk(v)
+
+      walk(js)
+      return ids
 
    def _parse_next_data(self, html: str, *, base_url: str) -> List[Optional[GameRecord]]:
       out: List[Optional[GameRecord]] = []
@@ -291,7 +536,7 @@ class PSNAdapter(Adapter):
                plats.append(str(p))
       elif isinstance(psrc, str):
          plats = [psrc]
-      guess["platforms"] = [p for p in plats if p]
+      guess["platforms"] = normalize_platforms(plats)
 
       # price
       price = it.get("price") or {}
@@ -369,6 +614,7 @@ class PSNAdapter(Adapter):
          platforms.append("PS5")
       if "PlayStation 4" in (b.get("name") or ""):
          platforms.append("PS4")
+      platforms = normalize_platforms(platforms)
 
       return GameRecord(
          store="psn",
