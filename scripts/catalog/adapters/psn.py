@@ -52,10 +52,8 @@ def _default_seed_pages(_country: str, locale: str) -> List[str]:
    loc = locale.replace("_", "-").lower()
    base = f"https://store.playstation.com/{loc}"
    return [
-      f"{base}/pages/browse/ps5-games",
-      f"{base}/pages/browse/ps4-games",
-      f"{base}/pages/browse/ps5-deals",
-      f"{base}/pages/browse/ps4-deals",
+      f"{base}/category/d71e8e6d-0940-4e03-bd02-404fc7d31a31", # PS5 Games
+      f"{base}/category/85448d87-aa7b-4318-9997-7d25f4d275a4", # PS4 Games
    ]
 
 class PSNAdapter(Adapter):
