@@ -1,0 +1,23 @@
+[project]
+name = "store-scraper"
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "Cross-store game catalog scraper that exports JSON files."
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name="Ephellon"}]
+dependencies = [
+   "httpx[http2]>=0.27",
+   "pydantic>=2.7",
+   "tenacity>=8.2",
+   "aiolimiter>=1.1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 96
+
+[tool.pytest.ini_options]
+addopts = "-q"

@@ -1,0 +1,10 @@
+# Ignore these file-types
+# *.txt
+
+# Ignore these files
+# file.txt
+
+# Ignore these folders
+# dir\
+.git\
+__pycache__\
