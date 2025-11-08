@@ -2,7 +2,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import uuid
+from urllib.parse import quote_plus, urlparse, parse_qs
 from dataclasses import dataclass
 from typing import AsyncIterator, Dict, Any, List, Optional, Set
 from urllib.parse import quote, quote_plus, urlparse, parse_qs
@@ -16,6 +16,7 @@ from catalog.normalize import (
    normalize_platforms,
    normalize_rating,
 )
+from catalog.http import DomainLimiter
 
 # Notes:
 # - PSN's public surface has changed multiple times (legacy "valkyrie" / "chihiro",
@@ -65,7 +66,6 @@ class PSNAdapter(Adapter):
                 endpoints: PSNEndpoints | None = None, **kw):
       super().__init__(config=config, **kw)
       self.endpoints = endpoints or PSNEndpoints(
-         category_ids=None,
          search_api=(
             "https://store.playstation.com/api/productsearch/v2"
             "?query={query}&size={size}&country={country}&language={language}&lang={lang}&offset={offset}"
