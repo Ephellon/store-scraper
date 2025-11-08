@@ -2,7 +2,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from urllib.parse import quote_plus, urlparse, parse_qs
+import uuid
 from dataclasses import dataclass
 from typing import AsyncIterator, Dict, Any, List, Optional, Set
 from urllib.parse import quote, quote_plus, urlparse, parse_qs
@@ -16,7 +16,6 @@ from catalog.normalize import (
    normalize_platforms,
    normalize_rating,
 )
-from catalog.http import DomainLimiter
 
 # Notes:
 # - PSN's public surface has changed multiple times (legacy "valkyrie" / "chihiro",
