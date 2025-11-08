@@ -64,11 +64,10 @@ class PSNAdapter(Adapter):
    def __init__(self, *, config: AdapterConfig | None = None,
                 endpoints: PSNEndpoints | None = None, **kw):
       super().__init__(config=config, **kw)
+      # Default to GraphQL category grids (pagination) and HTML fallbacks. The
+      # legacy productsearch endpoint has been deprecated and is left
+      # unconfigured unless explicitly provided via PSNEndpoints.
       self.endpoints = endpoints or PSNEndpoints(
-         search_api=(
-            "https://store.playstation.com/api/productsearch/v2"
-            "?query={query}&size={size}&country={country}&language={language}&lang={lang}&offset={offset}"
-         ),
          seed_pages=_default_seed_pages(self.config.country, self.config.locale),
       )
 
