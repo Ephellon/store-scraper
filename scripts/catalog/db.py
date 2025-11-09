@@ -17,6 +17,7 @@ from sqlalchemy import (
    select,
 )
 from sqlalchemy.engine import Engine
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 from sqlalchemy.exc import OperationalError
 
@@ -45,7 +46,11 @@ def _resolve_url(url: str) -> str:
 def _get_engine(url: str) -> Engine:
    eng = _ENGINES.get(url)
    if eng is None:
-      eng = create_engine(url, future=True)
+      engine_kwargs = {"future": True}
+      parsed = make_url(url)
+      if parsed.drivername.startswith("sqlite"):
+         engine_kwargs["connect_args"] = {"timeout": 30, "check_same_thread": False}
+      eng = create_engine(url, **engine_kwargs)
       Base.metadata.create_all(eng)
       _ENGINES[url] = eng
    return eng
@@ -102,15 +107,16 @@ class CatalogCache:
       payload.setdefault("store", record.store)
       now = datetime.utcnow()
 
-      existing = (
-         self._session.execute(
-            select(CachedGameRow)
-            .where(CachedGameRow.store == record.store)
-            .where(CachedGameRow.cache_key == key)
+      with self._session.no_autoflush:
+         existing = (
+            self._session.execute(
+               select(CachedGameRow)
+               .where(CachedGameRow.store == record.store)
+               .where(CachedGameRow.cache_key == key)
+            )
+            .scalars()
+            .first()
          )
-         .scalars()
-         .first()
-      )
 
       if existing:
          existing.payload = payload
