@@ -1,7 +1,11 @@
 from __future__ import annotations
-import json, os
+
+import json
+import os
 from collections import defaultdict
-from typing import Iterable, Tuple, List
+from datetime import datetime, timezone
+from typing import Iterable, List, Tuple
+
 from catalog.models import GameRecord, LetterItem
 from catalog.normalize import letter_bucket
 
@@ -25,7 +29,7 @@ def write_catalog(out_dir: str, store: str, rows: Iterable[GameRecord]) -> None:
          rating=rec.rating if rec.rating else None
       )
       buckets[letter_bucket(rec.name)].append(item)
-      bang.append([rec.name, item.model_dump(mode="json")])  # 2-item list
+      bang.append((rec.name, item.model_dump(mode="json")))
 
    # stable-ish ordering per-letter
    for k in buckets:
@@ -37,5 +41,11 @@ def write_catalog(out_dir: str, store: str, rows: Iterable[GameRecord]) -> None:
          json.dump([i.model_dump(mode="json") for i in arr], fp, ensure_ascii=False, indent=4)
 
    # Write bang file
+   metadata = {
+      "size": len(bang),
+      "date": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+   }
+   bang_with_metadata: List[Tuple[str, dict]] = [("", metadata), *bang]
+
    with open(os.path.join(base, "!.json"), "w", encoding="utf-8") as fp:
-      json.dump(bang, fp, ensure_ascii=False, indent=4)
+      json.dump(bang_with_metadata, fp, ensure_ascii=False, indent=4)
