@@ -64,7 +64,7 @@ def write_catalog(out_dir: str, store: str, rows: Iterable[GameRecord]) -> None:
    delta = size - (previous_size if previous_size is not None else size)
    metadata = {
       "size": size,
-      "new": delta,
+      "diff": delta,
       "date": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
    }
    with open(metadata_path, "w", encoding="utf-8") as fp:
