@@ -91,6 +91,11 @@ _NEXT_RE = re.compile(
    re.S | re.I
 )
 
+_PRELOADED_STATE_RE = re.compile(
+   r'window\.__PRELOADED_STATE__\s*=\s*(\{.*?\})\s*;?\s*</script>',
+   re.S | re.I
+)
+
 # Some Xbox pages hydrate with "data-state" or window.__INITIAL_DATA__ style blocks
 _STATE_RE = re.compile(
    r'<script[^>]+data-state[^>]*>(.*?)</script>',
@@ -139,17 +144,9 @@ class XboxAdapter(Adapter):
       )
       self._ms_cv_base = "4jJHCSTOdoFi3I6HIa4VZs"
       self._ms_cv_counter = 20
-      self._initial_encoded_ct = (
-         "eyJIYXNNb3JlIjp0cnVlLCJTa2lwQ291bnQiOjI1LCJUb3RhbENvdW50IjoxNTAwNywi"
-         "UHJldmlvdXNQYWdlUHJvZHVjdElkcyI6WyI5TjhQTEc5SEQzMlMiLCI5UDJGRjE0SlpM"
-         "TDMiLCI5UEhGOUs1UTZaTFoiLCJCVDVQMlg5OTlWSDIiLCI5UDRCQjAyTVdEWksiLCI5"
-         "TkwzV1dOWkxaWk4iLCI5TkRGMUYyNjNSWjQiLCI5TlZEMTZOUDRKOFQiLCI5Tk5GRzhC"
-         "UVJDWEwiLCJCUTFUTjFUNzlWOUsiLCI5TVZYTVZUOFpLV0MiLCI5TkxLUzc4QzRGM1oi"
-         "LCI5TkJSNjNQVDRGWkMiLCI5TjIwMUtRWFM1Qk0iLCI5UDhSTUtYUk1MN0QiLCJCUEo2"
-         "ODZXNlMwTkgiLCI5UDBDRk1aOTRROFIiLCI5UEoyUlZSQzBMMVgiLCI5UEY1MjhNNkNS"
-         "SFEiLCI5UExCTTU3OTBMOTQiLCI5UDQ4MzdENlRTRkQiLCI5UDNQVDdQUUpEME0iLCI5"
-         "TlhNQlRCMDJaU0YiLCI5TjZENjBTQlpOMDUiLCI5TlJNWlhHS1A0Tk0iXX0="
-      )
+      self._initial_encoded_ct: Optional[str] = None
+      self._initial_total_items: Optional[int] = None
+      self._initial_state_loaded = False
 
    async def iter_games(self) -> AsyncIterator[GameRecord]:
       seen: Set[str] = set()
@@ -189,6 +186,8 @@ class XboxAdapter(Adapter):
 
    async def _iter_browse_api(self) -> AsyncIterator[Optional[GameRecord]]:
       assert self.endpoints.browse_api, "browse_api endpoint not configured"
+
+      await self._ensure_initial_browse_state()
 
       locale = self.config.locale.replace("_", "-")
       headers = {
@@ -247,12 +246,26 @@ class XboxAdapter(Adapter):
          else:
             continuation_key, continuation = None, None
 
+         if self._initial_total_items is None:
+            total = self._extract_total_items(js)
+            if total is not None:
+               self._initial_total_items = total
+
          has_more = self._extract_browse_has_more(js)
          if has_more is None and continuation:
             decoded = self._decode_encoded_ct(continuation)
             if isinstance(decoded, dict) and isinstance(decoded.get("HasMore"), bool):
                has_more = decoded["HasMore"]
-         if not continuation or produced == 0 or has_more is False:
+         if (
+            not continuation
+            or produced == 0
+            or has_more is False
+            or (
+               isinstance(self._initial_total_items, int)
+               and self._initial_total_items > 0
+               and len(seen_ids) >= self._initial_total_items
+            )
+         ):
             break
          await asyncio.sleep(0.05)
 
@@ -281,6 +294,25 @@ class XboxAdapter(Adapter):
       walk(js)
       return items
 
+   def _extract_total_items(self, js: Any) -> Optional[int]:
+      if isinstance(js, dict):
+         for key in ("totalItems", "TotalItems", "totalResults", "TotalResults", "totalCount", "TotalCount", "total"):
+            if key in js:
+               try:
+                  return int(js[key])
+               except Exception:
+                  return None
+         for value in js.values():
+            total = self._extract_total_items(value)
+            if total is not None:
+               return total
+      elif isinstance(js, list):
+         for value in js:
+            total = self._extract_total_items(value)
+            if total is not None:
+               return total
+      return None
+
    def _extract_browse_continuation(self, js: Any) -> Optional[tuple[str, str]]:
       def walk(node: Any) -> Optional[tuple[str, str]]:
          if isinstance(node, dict):
@@ -306,6 +338,71 @@ class XboxAdapter(Adapter):
          return None
 
       return walk(js)
+
+   async def _ensure_initial_browse_state(self) -> None:
+      if self._initial_state_loaded:
+         return
+      self._initial_state_loaded = True
+
+      locale = self.config.locale.replace("_", "-").lower()
+      url = f"https://www.xbox.com/{locale}/games/browse"
+
+      try:
+         html = await self.get_text(url, headers={"Accept": "text/html"})
+      except Exception:
+         return
+
+      encoded_ct, total_items = self._extract_initial_browse_state(html)
+      if encoded_ct:
+         self._initial_encoded_ct = encoded_ct
+      if total_items is not None:
+         self._initial_total_items = total_items
+
+   def _extract_initial_browse_state(self, html: str) -> tuple[Optional[str], Optional[int]]:
+      m = _PRELOADED_STATE_RE.search(html)
+      if not m:
+         return None, None
+      try:
+         state = json.loads(m.group(1))
+      except Exception:
+         return None, None
+
+      data: Any = state
+      for key in ("core2", "channels", "channelData"):
+         if not isinstance(data, dict):
+            return None, None
+         data = data.get(key)
+      if not isinstance(data, dict):
+         return None, None
+
+      channel = data.get("BROWSE_CHANNELID=_FILTERS=")
+      if not isinstance(channel, dict):
+         return None, None
+
+      payload = channel.get("data") or channel.get("Data")
+      if not isinstance(payload, dict):
+         return None, None
+
+      encoded_ct = (
+         payload.get("encodedCT")
+         or payload.get("EncodedCT")
+         or payload.get("EncodeddCT")
+      )
+      if isinstance(encoded_ct, str):
+         encoded_ct = encoded_ct.strip()
+      else:
+         encoded_ct = None
+
+      total_items_val = None
+      for key in ("totalItems", "TotalItems", "total"):
+         if key in payload:
+            try:
+               total_items_val = int(payload[key])
+            except Exception:
+               total_items_val = None
+            break
+
+      return encoded_ct, total_items_val
 
    def _extract_browse_has_more(self, js: Any) -> Optional[bool]:
       def walk(node: Any) -> Optional[bool]:
