@@ -81,7 +81,7 @@ A file hosting minimal metadata about the update/files.
 {
     "size": 12815,
     "date": "2025-11-09T03:18:32.207Z",
-    "new": -1137
+    "diff": -1137
 }
 ```
 
