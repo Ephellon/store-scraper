@@ -119,11 +119,7 @@ def _default_seed_pages(country: str, locale: str) -> List[str]:
    # locale like "en-US" -> "en-us"
    loc = locale.replace("_", "-").lower()
    return [
-      f"https://www.xbox.com/{loc}/games/all-games",
-      f"https://www.xbox.com/{loc}/games/xbox-series-x-s",
-      f"https://www.xbox.com/{loc}/games/xbox-one",
-      f"https://www.xbox.com/{loc}/games/pc",
-      f"https://www.xbox.com/{loc}/games/deals",
+      f"https://www.xbox.com/{loc}/games/browse",
    ]
 
 class XboxAdapter(Adapter):
