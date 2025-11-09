@@ -627,3 +627,27 @@ class PSNAdapter(Adapter):
          rating=None,
          type="game",
       )
+
+   def child_catalogs(self, rows: List[GameRecord]) -> Dict[str, List[GameRecord]]:
+      children: Dict[str, List[GameRecord]] = {"ps4": [], "ps5": []}
+
+      for rec in rows:
+         platforms = [p.lower() for p in rec.platforms]
+         include_ps4 = any("ps4" in plat for plat in platforms)
+         include_ps5 = any("ps5" in plat for plat in platforms)
+
+         if include_ps4:
+            child = rec.model_copy(deep=True)
+            child.store = "ps4"
+            child.extra = dict(child.extra)
+            child.extra.setdefault("source_store", self.store)
+            children["ps4"].append(child)
+
+         if include_ps5:
+            child = rec.model_copy(deep=True)
+            child.store = "ps5"
+            child.extra = dict(child.extra)
+            child.extra.setdefault("source_store", self.store)
+            children["ps5"].append(child)
+
+      return {name: items for name, items in children.items() if items}

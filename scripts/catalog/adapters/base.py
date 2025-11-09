@@ -108,6 +108,18 @@ class Adapter(abc.ABC):
       """
       ...
 
+   # -------- optional child catalog support -------------------------------
+
+   def child_catalogs(self, rows: List[GameRecord]) -> Dict[str, List[GameRecord]]:
+      """
+      Optionally return additional catalogs derived from the adapter's output.
+
+      The default implementation returns an empty mapping; adapters can
+      override this to build platform-specific (or other derived) catalogs.
+      Keys should correspond to the store directory names to be written.
+      """
+      return {}
+
    # -------- utilities for adapters ----------------------------------------
 
    def quarantine(self, *, error: str, raw: Dict[str, Any] | None = None) -> RecordResult:

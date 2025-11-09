@@ -32,6 +32,16 @@ async def run_adapter(
       if progress is not None and task_id is not None:
          progress.update(task_id, description=f"{a.store}: writing {len(buf)} records")
       write_catalog(out_dir, a.store, buf)
+      for child_store, child_rows in (a.child_catalogs(buf) or {}).items():
+         if not child_rows:
+            continue
+         log.info(
+            "[%s] writing %d records to child catalog %s",
+            a.store,
+            len(child_rows),
+            child_store,
+         )
+         write_catalog(out_dir, child_store, child_rows)
       log.info(
          "[%s] complete (fetched=%d parsed=%d quarantined=%d)",
          a.store,
