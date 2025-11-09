@@ -1,7 +1,8 @@
 from __future__ import annotations
 import asyncio
 import os
-from typing import AsyncIterator, Dict, Any, List, Optional
+from pathlib import Path
+from typing import AsyncIterator, Dict, Any, List, Optional, Set
 
 from catalog.adapters.base import Adapter, AdapterConfig, Capabilities
 from catalog.models import GameRecord
@@ -39,6 +40,9 @@ class SteamAdapter(Adapter):
       self._app_list_url = app_list_url or API_APP_LIST
       # allow passing via ctor or environment; empty string treated as absent
       self._api_key = (api_key if api_key is not None else os.getenv("STEAM_API_KEY")) or None
+      skip_path = os.getenv("STEAM_SKIP_FILE")
+      self._skip_file = Path(skip_path) if skip_path else Path(__file__).with_name("skip.txt")
+      self._skip_appids: Set[str] = self._load_skip_appids()
 
    async def iter_games(self) -> AsyncIterator[GameRecord]:
       # Step 1: seed appids from the global Steam app list, fallback to featured categories
@@ -49,6 +53,9 @@ class SteamAdapter(Adapter):
 
       # Step 2: hydrate via appdetails (region-aware pricing via cc)
       for appid in appids:
+         if self.skip_appid(appid):
+            continue
+
          data = await self._fetch_appdetails(appid)
          if not data:
             continue
@@ -107,10 +114,43 @@ class SteamAdapter(Adapter):
          return None
       return payload.get("data") or None
 
+   def _load_skip_appids(self) -> Set[str]:
+      try:
+         with self._skip_file.open("r", encoding="utf-8") as fh:
+            ids = set()
+            for line in fh:
+               line = line.strip()
+               if not line or line.startswith("#"):
+                  continue
+               ids.add(line)
+            return ids
+      except FileNotFoundError:
+         return set()
+      except OSError:
+         return set()
+
+   def skip_appid(self, appid: str, *, app_type: Optional[str] = None) -> bool:
+      appid_str = str(appid)
+      if app_type is None:
+         return appid_str in self._skip_appids
+
+      normalized_type = app_type.lower()
+      should_skip = bool(self.include_types) and normalized_type and normalized_type not in self.include_types
+      if should_skip and appid_str not in self._skip_appids:
+         self._skip_appids.add(appid_str)
+         try:
+            self._skip_file.parent.mkdir(parents=True, exist_ok=True)
+            with self._skip_file.open("a", encoding="utf-8") as fh:
+               fh.write(f"{appid_str}\n")
+         except OSError:
+            pass
+      return should_skip
+
    def _normalize_app(self, appid: str, app: Dict[str, Any]) -> Optional[GameRecord]:
       # Filter by type
       app_type = (app.get("type") or "").lower()
       if self.include_types and app_type and app_type not in self.include_types:
+         self.skip_appid(appid, app_type=app_type)
          return None
 
       # Title
