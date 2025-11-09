@@ -185,11 +185,10 @@ class NintendoAdapter(Adapter):
       assert self.endpoints.search_api, "search_api endpoint template not configured"
 
       headers = {"Accept": "application/json"}
-      if self.endpoints.algolia_app_id and self.endpoints.algolia_api_key:
-         headers.update({
-            "X-Algolia-Application-Id": self.endpoints.algolia_app_id,
-            "X-Algolia-API-Key": self.endpoints.algolia_api_key,
-         })
+      if self.endpoints.algolia_app_id:
+         headers["X-Algolia-Application-Id"] = self.endpoints.algolia_app_id
+      if self.endpoints.algolia_api_key:
+         headers["X-Algolia-Api-Key"] = self.endpoints.algolia_api_key
 
       locale_underscore = self.config.locale.replace("-", "_").lower()
       index_template = self.endpoints.algolia_index or "ncom_game_en_{country}"
