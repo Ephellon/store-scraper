@@ -46,7 +46,7 @@ class SteamAdapter(Adapter):
       # allow passing via ctor or environment; empty string treated as absent
       self._api_key = (api_key if api_key is not None else os.getenv("STEAM_API_KEY")) or None
       skip_path = os.getenv("STEAM_SKIP_FILE")
-      self._skip_file = Path(skip_path) if skip_path else Path(__file__).with_name("skip.txt")
+      self._skip_file = Path(skip_path) if skip_path else Path(__file__).with_name(".steamignore")
       self._skip_appids: Set[str] = self._load_skip_appids()
       self._request_count = 0
 
