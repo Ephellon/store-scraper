@@ -137,7 +137,19 @@ class XboxAdapter(Adapter):
          ),
          seed_pages=_default_seed_pages(self.config.country, self.config.locale),
       )
-      self._ms_cv = "store-scraper.0"
+      self._ms_cv_base = "4jJHCSTOdoFi3I6HIa4VZs"
+      self._ms_cv_counter = 20
+      self._initial_encoded_ct = (
+         "eyJIYXNNb3JlIjp0cnVlLCJTa2lwQ291bnQiOjI1LCJUb3RhbENvdW50IjoxNTAwNywi"
+         "UHJldmlvdXNQYWdlUHJvZHVjdElkcyI6WyI5TjhQTEc5SEQzMlMiLCI5UDJGRjE0SlpM"
+         "TDMiLCI5UEhGOUs1UTZaTFoiLCJCVDVQMlg5OTlWSDIiLCI5UDRCQjAyTVdEWksiLCI5"
+         "TkwzV1dOWkxaWk4iLCI5TkRGMUYyNjNSWjQiLCI5TlZEMTZOUDRKOFQiLCI5Tk5GRzhC"
+         "UVJDWEwiLCJCUTFUTjFUNzlWOUsiLCI5TVZYTVZUOFpLV0MiLCI5TkxLUzc4QzRGM1oi"
+         "LCI5TkJSNjNQVDRGWkMiLCI5TjIwMUtRWFM1Qk0iLCI5UDhSTUtYUk1MN0QiLCJCUEo2"
+         "ODZXNlMwTkgiLCI5UDBDRk1aOTRROFIiLCI5UEoyUlZSQzBMMVgiLCI5UEY1MjhNNkNS"
+         "SFEiLCI5UExCTTU3OTBMOTQiLCI5UDQ4MzdENlRTRkQiLCI5UDNQVDdQUUpEME0iLCI5"
+         "TlhNQlRCMDJaU0YiLCI5TjZENjBTQlpOMDUiLCI5TlJNWlhHS1A0Tk0iXX0="
+      )
 
    async def iter_games(self) -> AsyncIterator[GameRecord]:
       seen: Set[str] = set()
@@ -192,28 +204,27 @@ class XboxAdapter(Adapter):
          "x-ms-api-version": "1.1",
       }
 
-      order_filters = base64.b64encode(json.dumps({
-         "orderby": {
-            "id": "orderby",
-            "choices": [{"id": "Title Asc"}],
-         }
-      }).encode("utf-8")).decode("utf-8")
+      empty_filters = base64.b64encode(json.dumps({}).encode("utf-8")).decode("utf-8")
 
-      body = {
-         "Filters": order_filters,
-         "ReturnFilters": True,
-         "ChannelKeyToBeUsedInResponse": "BROWSE_CHANNELID=_FILTERS=ORDERBY=TITLE ASC",
+      base_body = {
+         "Filters": empty_filters,
+         "ReturnFilters": False,
+         "ChannelKeyToBeUsedInResponse": "BROWSE_CHANNELID=_FILTERS=",
          "ChannelId": "",
       }
 
       continuation: Optional[str] = None
+      continuation_key: Optional[str] = "EncodedCT" if self._initial_encoded_ct else None
+      if continuation_key:
+         continuation = self._initial_encoded_ct
       seen_ids: Set[str] = set()
 
       while True:
-         payload = dict(body)
-         if continuation:
-            payload["ContinuationToken"] = continuation
+         payload = dict(base_body)
+         if continuation_key and continuation:
+            payload[continuation_key] = continuation
 
+         headers["Ms-Cv"] = self._next_ms_cv()
          resp = await self.request(
             "POST",
             self.endpoints.browse_api,
@@ -230,11 +241,25 @@ class XboxAdapter(Adapter):
                produced += 1
                yield rec
 
-         continuation = self._extract_browse_continuation(js)
+         cont_info = self._extract_browse_continuation(js)
+         if cont_info:
+            continuation_key, continuation = cont_info
+         else:
+            continuation_key, continuation = None, None
+
          has_more = self._extract_browse_has_more(js)
+         if has_more is None and continuation:
+            decoded = self._decode_encoded_ct(continuation)
+            if isinstance(decoded, dict) and isinstance(decoded.get("HasMore"), bool):
+               has_more = decoded["HasMore"]
          if not continuation or produced == 0 or has_more is False:
             break
          await asyncio.sleep(0.05)
+
+   def _next_ms_cv(self) -> str:
+      value = f"{self._ms_cv_base}.{self._ms_cv_counter}"
+      self._ms_cv_counter += 1
+      return value
 
    def _extract_browse_items(self, js: Any, seen_ids: Set[str]) -> List[Dict[str, Any]]:
       items: List[Dict[str, Any]] = []
@@ -256,13 +281,19 @@ class XboxAdapter(Adapter):
       walk(js)
       return items
 
-   def _extract_browse_continuation(self, js: Any) -> Optional[str]:
-      def walk(node: Any) -> Optional[str]:
+   def _extract_browse_continuation(self, js: Any) -> Optional[tuple[str, str]]:
+      def walk(node: Any) -> Optional[tuple[str, str]]:
          if isinstance(node, dict):
             for key in ("continuationToken", "ContinuationToken", "nextContinuationToken"):
                token = node.get(key)
                if isinstance(token, str) and token:
-                  return token
+                  return key, token
+            for key in ("encodedContinuationToken", "EncodedContinuationToken", "EncodedCT", "encodedCT"):
+               token = node.get(key)
+               if isinstance(token, str) and token:
+                  if key.lower().endswith("encodedct"):
+                     return "EncodedCT", token
+                  return key, token
             for value in node.values():
                token = walk(value)
                if token:
@@ -294,6 +325,19 @@ class XboxAdapter(Adapter):
          return None
 
       return walk(js)
+
+   def _decode_encoded_ct(self, token: str) -> Optional[Dict[str, Any]]:
+      if not token:
+         return None
+      padding = "=" * (-len(token) % 4)
+      try:
+         raw = base64.b64decode(token + padding)
+      except Exception:
+         return None
+      try:
+         return json.loads(raw.decode("utf-8"))
+      except Exception:
+         return None
 
    def _normalize_browse_item(self, item: Dict[str, Any]) -> Optional[GameRecord]:
       name = strip_edition_noise(clean_title(
