@@ -34,8 +34,8 @@ def write_catalog(out_dir: str, store: str, rows: Iterable[GameRecord]) -> None:
    # Write per-letter
    for k, arr in buckets.items():
       with open(os.path.join(base, f"{k}.json"), "w", encoding="utf-8") as fp:
-         json.dump([i.model_dump(mode="json") for i in arr], fp, ensure_ascii=False, indent=2)
+         json.dump([i.model_dump(mode="json") for i in arr], fp, ensure_ascii=False, indent=4)
 
    # Write bang file
    with open(os.path.join(base, "!.json"), "w", encoding="utf-8") as fp:
-      json.dump(bang, fp, ensure_ascii=False, indent=2)
+      json.dump(bang, fp, ensure_ascii=False, indent=4)
