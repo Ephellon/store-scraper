@@ -138,11 +138,31 @@ class CatalogCache:
    def sync_keys(self, store: str, keys: Sequence[str]) -> None:
       """Remove cached rows for *store* that are no longer present."""
 
-      key_list = list(keys)
-      stmt = delete(CachedGameRow).where(CachedGameRow.store == store)
-      if key_list:
-         stmt = stmt.where(~CachedGameRow.cache_key.in_(key_list))
-      self._session.execute(stmt)
+      keys_to_keep = set(keys)
+      chunk_size = 500
+      last_id: int | None = None
+
+      while True:
+         stmt = (
+            select(CachedGameRow.id, CachedGameRow.cache_key)
+            .where(CachedGameRow.store == store)
+            .order_by(CachedGameRow.id)
+            .limit(chunk_size)
+         )
+         if last_id is not None:
+            stmt = stmt.where(CachedGameRow.id > last_id)
+
+         rows = self._session.execute(stmt).all()
+         if not rows:
+            break
+
+         last_id = rows[-1][0]
+         ids_to_remove = [row[0] for row in rows if row[1] not in keys_to_keep]
+         if ids_to_remove:
+            self._session.execute(
+               delete(CachedGameRow).where(CachedGameRow.id.in_(ids_to_remove))
+            )
+
       self.flush()
 
    def flush(self) -> None:
