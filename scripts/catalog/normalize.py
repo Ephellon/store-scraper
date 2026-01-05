@@ -142,8 +142,8 @@ def normalize_platforms(values) -> list[str]:
    return out
 
 def parse_price_string(value: str) -> Optional[float]:
-   if not value or value.lower() in {"free", "unavailable"}:
-      return 0.0 if value and value.lower() == "free" else None
+   if not value or value.lower() in {"free", "free+", "unavailable"}:
+      return 0.0 if value and value.lower() in {"free", "free+"} else None
    m = re.search(r"([0-9]+(?:[\.,][0-9]{2})?)", value)
    if not m:
       return None

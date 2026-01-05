@@ -275,7 +275,7 @@ class PSNAdapter(Adapter):
       currency = None
       price_obj = it.get("price") or {}
       if isinstance(price_obj, dict):
-         amount = price_obj.get("discounted") or price_obj.get("current") or price_obj.get("amount")
+         amount = price_obj.get("current") or price_obj.get("amount") or price_obj.get("discounted")
          currency = price_obj.get("currency")
 
       if display and isinstance(display, str):
@@ -405,7 +405,7 @@ class PSNAdapter(Adapter):
       price_obj = it.get("price") or {}
       price_str: Optional[str] = None
       if isinstance(price_obj, dict):
-         for key in ("discountedPrice", "basePrice", "strikethroughPrice"):
+         for key in ("basePrice", "strikethroughPrice", "discountedPrice"):
             val = price_obj.get(key)
             if isinstance(val, str) and val:
                price_str = val

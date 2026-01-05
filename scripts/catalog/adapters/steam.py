@@ -268,9 +268,12 @@ class SteamAdapter(Adapter):
       if isinstance(p, dict):
          # price_overview.final is in cents
          try:
-            amount = float(p["final"]) / 100.0
+            amount = float(p["initial"]) / 100.0
          except Exception:
-            amount = None
+            try:
+               amount = float(p["final"]) / 100.0
+            except Exception:
+               amount = None
          currency = p.get("currency")
          # If discount present, we still output the discounted display (no strike-through in schema)
          price_str = price_to_string(amount, currency)

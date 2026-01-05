@@ -92,8 +92,8 @@ def _extract_price_components(*values: Any) -> tuple[Optional[float], Optional[s
          if display is None:
             display = node.get("display") or node.get("formatted") or node.get("rawValue") or node.get("priceFormatted")
          for key in (
-            "finalPrice", "salePrice", "discountPrice", "discounted", "regularPrice", "regPrice",
-            "current", "amount", "raw", "value", "price", "msrp", "final", "basePrice", "usdValue",
+            "regularPrice", "regPrice", "basePrice", "usdValue", "current", "amount", "raw", "value",
+            "price", "msrp", "final", "finalPrice", "salePrice", "discountPrice", "discounted", 
          ):
             if key in node:
                visit(node.get(key))
@@ -376,7 +376,7 @@ class NintendoAdapter(Adapter):
       price_obj = it.get("price") or {}
       if isinstance(price_obj, dict):
          # Possible numeric fields: "regular", "discounted", "current", "amount"
-         amt = price_obj.get("discounted") or price_obj.get("current") or price_obj.get("regular") or price_obj.get("amount")
+         amt = price_obj.get("regular") or price_obj.get("amount") or price_obj.get("current") or price_obj.get("discounted")
          try:
             amount = float(amt) if amt is not None else None
          except Exception:
