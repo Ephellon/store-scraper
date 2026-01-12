@@ -1,4 +1,5 @@
 # Ignore these file-types
+*.lnk
 *.txt
 *.db
 *.db-*
