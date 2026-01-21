@@ -3,8 +3,10 @@ from typing import Optional
 
 _MARK_RX = re.compile(r"[™®©]", re.U)
 _EDITION_RX = re.compile(
-   r"\b(deluxe|definitive|gold|ultimate|goty|complete|remastered|hd|bundle|collection|director'?s cut|edition|standard|launch|classic)\b",
-   re.I
+    r"(?:\s*[:\-–—]\s*|\s+)"
+    r"(deluxe|definitive|gold|ultimate|goty|(?:game of the year)|complete|remastered|hd|bundle|collection|director'?s cut|edition|standard|launch|classic)"
+    r"(?:\s+edition)?\b",
+    re.I
 )
 _PLATFORM_NOISE_RX = re.compile(
    r"(?:(?:for|on) )?\b(ps\s*4|ps\s*5|playstation\s*4|playstation\s*5|xbox(\s+one|\s+series\s+x\|?s)?|series\s+x\|?s|nintendo\s+switch|switch)\b",
