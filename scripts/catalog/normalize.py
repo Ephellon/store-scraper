@@ -3,14 +3,42 @@ from typing import Optional
 
 _MARK_RX = re.compile(r"[™®©]", re.U)
 _EDITION_RX = re.compile(
-    r"(?:\s*[:\-–—]\s*|\s+)"
-    r"(deluxe|definitive|gold|ultimate|goty|(?:game of the year)|complete|remastered|hd|bundle|collection|director'?s cut|edition|standard|launch|classic)"
-    r"(?:\s+edition)?\b",
-    re.I
-)
-_PLATFORM_NOISE_RX = re.compile(
-   r"(?:(?:for|on) )?\b((?:playstation|ps)\s*[1-5]|xbox(\s+one|\s+series\s+x\|?s)?|series\s+x\|?s|nintendo\s+switch|switch)\b(?:\s*[&+]|and\b)?",
+   r"(?:\s*[:\-–—]\s*|\s+)"
+   r"("
+      r"deluxe|definitive|gold|ultimate|goty|complete|remastered|hd|bundle|collection|edition|standard|launch|classic"
+      r"|game(?:\s*[\-–—:]\s*|\s+)of(?:\s*[\-–—:]\s*|\s+)the(?:\s*[\-–—:]\s*|\s+)year"
+      r"|director[’']?s(?:\s*[\-–—:]\s*|\s+)cut"
+   r")"
+   r"(?:\s+edition)?\b",
    re.I
+)
+
+_PLATFORM_NOISE_RX = re.compile(
+   r"""
+   \s*                          # eat leading whitespace
+   \(?                          # optional opening paren
+   \s*
+   (?:(?:for|on)\s+)?           # optional "for " / "on "
+   \b
+   (?:
+      # PlayStation list: PS4 & PS5, PlayStation 4 and 5, etc.
+      (?:
+         (?:playstation|ps)\s*[1-5]
+         (?:\s*(?:[&+]|and)\s*(?:playstation|ps)?\s*[1-5])*
+      )
+      |
+      # Xbox variants
+      xbox(?:\s+one|\s+series\s+x\|?s)?
+      |
+      series\s+x\|?s
+      |
+      (?:nintendo\s+)?switch(?:\s*[12])?
+   )
+   \b
+   \s*
+   \)?                          # optional closing paren
+   """,
+   re.I | re.X
 )
 
 _CURRENCY_SYMBOLS = {
@@ -87,7 +115,8 @@ _RATING_MAP = {
 
 def clean_title(name: str) -> str:
    t = _MARK_RX.sub("", name or "").strip()
-   t = re.sub(r"\s{2,}", " ", t)
+   t = re.sub(r"\s{2,}", " ", t).strip()
+   t = re.sub(r"\(\s*\)", "", t).strip()
    return t
 
 def strip_edition_noise(name: str) -> str:
