@@ -2,6 +2,7 @@ import re
 from typing import Optional
 
 _MARK_RX = re.compile(r"[™®©]", re.U)
+
 _EDITION_RX = re.compile(
    r"(?:\s*[:\-–—]\s*|\s+)"
    r"("
@@ -135,8 +136,6 @@ _RATING_MAP = {
 def clean_title(name: str) -> str:
    t = _MARK_RX.sub("", name or "").strip()
    t = re.sub(r"\s{2,}", " ", t).strip()
-   t = re.sub(r"\s*[:&]$", "", t).strip()
-   t = re.sub(r"\([\s&\+]+\)", "", t).strip()
    return t
 
 def strip_edition_noise(name: str) -> str:
@@ -144,6 +143,8 @@ def strip_edition_noise(name: str) -> str:
    t = _PLATFORM_NOISE_RX.sub("", t)
    t = _EDITION_RX.sub("", t)
    t = re.sub(r"\s{2,}", " ", t).strip(" -–—")
+   t = re.sub(r"\s*[:&]\s*$", "", t).strip()
+   t = re.sub(r"\s*\([\s&\+]+\)", "", t).strip()
    return t or clean_title(name)
 
 def price_to_string(amount: Optional[float], currency: Optional[str], *, flags: Optional[str] = None) -> str:

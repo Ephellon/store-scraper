@@ -93,7 +93,7 @@ def _extract_price_components(*values: Any) -> tuple[Optional[float], Optional[s
             display = node.get("display") or node.get("formatted") or node.get("rawValue") or node.get("priceFormatted")
          for key in (
             "regularPrice", "regPrice", "basePrice", "usdValue", "current", "amount", "raw", "value",
-            "price", "msrp", "final", "finalPrice", "salePrice", "discountPrice", "discounted", 
+            "price", "msrp", "final", "finalPrice", "salePrice", "discountPrice", "discounted",
          ):
             if key in node:
                visit(node.get(key))
@@ -149,7 +149,7 @@ class NintendoAdapter(Adapter):
          algolia_app_id="U3B6GR4UA3",
          algolia_api_key="a29c6927638bfd8cee23993e51e721c9",
          algolia_index="store_game_{locale}_{country}_release_des",
-         algolia_filters="NOT \"contentDescriptors.label\":\"Partial Nudity\" AND NOT \"contentDescriptors.label\":\"Nudity\"",
+         algolia_filters="",
          algolia_additional_params={
             "analytics": True,
             "facetingAfterDistinct": True,
