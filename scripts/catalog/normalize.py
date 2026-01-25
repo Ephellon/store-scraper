@@ -5,7 +5,7 @@ _MARK_RX = re.compile(r"[™®©]", re.U)
 _EDITION_RX = re.compile(
    r"(?:\s*[:\-–—]\s*|\s+)"
    r"("
-      r"deluxe|definitive|gold|ultimate|goty|complete|remastered|hd|bundle|collection|edition|standard|launch|classic"
+      r"deluxe|definitive|silver|gold|platinum|ultimate|goty|complete|remastered|hd|bundle|collection|edition|standard|launch|classic"
       r"|game(?:\s*[\-–—:]\s*|\s+)of(?:\s*[\-–—:]\s*|\s+)the(?:\s*[\-–—:]\s*|\s+)year"
       r"|director[’']?s(?:\s*[\-–—:]\s*|\s+)cut"
    r")"
@@ -21,17 +21,18 @@ _PLATFORM_NOISE_RX = re.compile(
    (?:(?:for|on)\s+)?           # optional "for " / "on "
    \b
    (?:
-      # PlayStation list: PS4 & PS5, PlayStation 4 and 5, etc.
+      # PlayStation variants
       (?:
          (?:playstation|ps)\s*[1-5]
          (?:\s*(?:[&+]|and)\s*(?:playstation|ps)?\s*[1-5])*
       )
       |
       # Xbox variants
-      xbox(?:\s+one|\s+series\s+x\|?s)?
+      xbox(?:\s+one|\s+series(?:\s+[sx](?:\|?[sx])?)?)?
       |
-      series\s+x\|?s
+      series\s+[sx](?:\|?[sx])?
       |
+      # Nintendo variants
       (?:nintendo\s+)?switch(?:\s*[12])?
    )
    \b
@@ -56,61 +57,79 @@ _CURRENCY_SYMBOLS = {
 }
 
 _PLATFORM_MAP = {
+   "psp": "PSP",
+   "playstationportable": "PSP",
+   "psv": "PS Vita",
+   "playstationvita": "PS Vita",
+   "playstation3": "PS3",
+   "playstation4": "PS4",
+   "playstation5": "PS5",
+   "ps3": "PS3",
+   "ps3ps4": "PS3/PS4",
+   "ps3ps4ps5": "PS3/PS4/PS5",
    "ps4": "PS4",
+   "ps4ps5": "PS4/PS5",
    "ps5": "PS5",
-   "playstation 4": "PS4",
-   "playstation 5": "PS5",
-   "ps4 & ps5": "PS4/PS5",
-   "ps5|ps4": "PS4/PS5",
-   "xbox one": "Xbox One",
-   "xboxone": "Xbox One",
-   "xbox series x|s": "Xbox Series X|S",
-   "xboxseriesx|s": "Xbox Series X|S",
-   "xboxseriesxs": "Xbox Series X|S",
-   "xbox series x": "Xbox Series X|S",
-   "xboxseriesx": "Xbox Series X|S",
-   "xbox series s": "Xbox Series X|S",
-   "xboxseriess": "Xbox Series X|S",
-   "xbox series": "Xbox Series X|S",
-   "xboxseries": "Xbox Series X|S",
+   "ps5ps4": "PS4/PS5",
+   "ps5ps4ps3": "PS3/PS4/PS5",
+
    "xbox": "Xbox",
-   "windows": "Windows",
+   "xboxone": "Xbox One",
+   "xboxseries": "Xbox Series X|S",
+   "xboxseriess": "Xbox Series X|S",
+   "xboxseriesx": "Xbox Series X|S",
+   "xboxseriesxs": "Xbox Series X|S",
+   "xboxplayanywhere": "Xbox Play Anywhere",
+
+   "switch": "Switch",
+   "switch2": "Switch 2",
+   "nintendoswitch": "Switch",
+   "nintendoswitch2": "Switch 2",
+
+   "linux": "Linux",
+   "nix": "Linux",
+   "unix": "Unix",
+
+   "mac": "Mac",
+
    "pc": "PC",
    "steam": "PC",
    "win32": "Windows",
-   "switch": "Switch",
-   "nintendo switch": "Switch",
-   "xbox play anywhere": "Xbox Play Anywhere",
+   "windows": "Windows",
 }
 
 _RATING_MAP = {
-   "everyone": "everyone",
-   "everyone 10+": "everyone 10+",
-   "e10+": "everyone 10+",
-   "e 10+": "everyone 10+",
-   "e 10 plus": "everyone 10+",
-   "e for everyone": "everyone",
-   "esrb everyone": "everyone",
-   "esrb everyone 10+": "everyone 10+",
-   "rating pending": "rating pending",
+   "ratingpending": "rating pending",
    "rp": "rating pending",
-   "teen": "teen",
+
+   "e10+": "everyone 10+",
+   "e10plus": "everyone 10+",
+   "eforeveryone": "everyone",
+   "esrbeveryone": "everyone",
+   "esrbeveryone10+": "everyone 10+",
+   "everyone": "everyone",
+   "everyone10+": "everyone 10+",
+
+   "esrbteen": "teen",
    "t": "teen",
-   "esrb teen": "teen",
-   "mature": "mature 17+",
-   "mature 17+": "mature 17+",
+   "teen": "teen",
+
+   "esrbmature": "mature 17+",
    "m": "mature 17+",
-   "esrb mature": "mature 17+",
-   "pegi 3": "everyone",
-   "pegi 7": "everyone 10+",
-   "pegi 12": "teen",
-   "pegi 16": "mature 17+",
-   "pegi 18": "mature 17+",
-   "cero a": "everyone",
-   "cero b": "teen",
-   "cero c": "mature 17+",
-   "cero d": "mature 17+",
-   "cero z": "mature 17+",
+   "mature": "mature 17+",
+   "mature17+": "mature 17+",
+
+   "pegi3": "everyone",
+   "pegi7": "everyone 10+",
+   "pegi12": "teen",
+   "pegi16": "mature 17+",
+   "pegi18": "mature 17+",
+
+   "ceroa": "everyone",
+   "cerob": "teen",
+   "ceroc": "mature 17+",
+   "cerod": "mature 17+",
+   "ceroz": "mature 17+",
 }
 
 def clean_title(name: str) -> str:
@@ -150,13 +169,13 @@ def letter_bucket(name: str) -> str:
 def normalize_rating(value: Optional[str]) -> Optional[str]:
    if not value:
       return None
-   v = re.sub(r"[^a-z0-9+ ]+", "", value.lower()).strip()
+   v = re.sub(r"[^a-z0-9+]+", "", value.lower()).strip()
    return _RATING_MAP.get(v)
 
 def normalize_platform(value: str) -> str:
    if not value:
       return ""
-   key = value.strip().lower()
+   key = re.sub(r"[^a-z0-9]+", "", value.lower()).strip()
    return _PLATFORM_MAP.get(key, value.strip())
 
 def normalize_platforms(values) -> list[str]:
