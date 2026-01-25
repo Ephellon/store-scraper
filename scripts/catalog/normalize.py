@@ -116,7 +116,8 @@ _RATING_MAP = {
 def clean_title(name: str) -> str:
    t = _MARK_RX.sub("", name or "").strip()
    t = re.sub(r"\s{2,}", " ", t).strip()
-   t = re.sub(r"\(\s*\)", "", t).strip()
+   t = re.sub(r"\s*[:&]$", "", t).strip()
+   t = re.sub(r"\([\s&\+]+\)", "", t).strip()
    return t
 
 def strip_edition_noise(name: str) -> str:
