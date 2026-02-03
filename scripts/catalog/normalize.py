@@ -43,6 +43,11 @@ _PLATFORM_NOISE_RX = re.compile(
    re.I | re.X
 )
 
+_TAIL_END_RX = re.compile(
+   r"([ &:-]|\([&\+\s]*\)|\[[&\+\s]*\])+",
+   re.I | re.X
+)
+
 _CURRENCY_SYMBOLS = {
    "USD": "$",
    "CAD": "$",
@@ -135,16 +140,16 @@ _RATING_MAP = {
 
 def clean_title(name: str) -> str:
    t = _MARK_RX.sub("", name or "").strip()
+   t = _TAIL_END_RX.sub("", t).strip()
    t = re.sub(r"\s{2,}", " ", t).strip()
    return t
 
 def strip_edition_noise(name: str) -> str:
    t = clean_title(name)
    t = _PLATFORM_NOISE_RX.sub("", t)
-   # t = _EDITION_RX.sub("", t)
+   t = _EDITION_RX.sub("", t)
+   t = _TAIL_END_RX.sub("", t).strip()
    t = re.sub(r"\s{2,}", " ", t).strip(" -–—")
-   t = re.sub(r"\s*[:&]\s*$", "", t).strip()
-   t = re.sub(r"\s*\([\s&\+]+\)", "", t).strip()
    return t or clean_title(name)
 
 def price_to_string(amount: Optional[float], currency: Optional[str], *, flags: Optional[str] = None) -> str:

@@ -3,7 +3,7 @@
 *.txt
 *.db
 *.db-*
-*-update.bat
+*-update.*
 
 # Ignore these folders
 .git/
