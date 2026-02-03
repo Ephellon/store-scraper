@@ -141,7 +141,7 @@ def clean_title(name: str) -> str:
 def strip_edition_noise(name: str) -> str:
    t = clean_title(name)
    t = _PLATFORM_NOISE_RX.sub("", t)
-   t = _EDITION_RX.sub("", t)
+   # t = _EDITION_RX.sub("", t)
    t = re.sub(r"\s{2,}", " ", t).strip(" -–—")
    t = re.sub(r"\s*[:&]\s*$", "", t).strip()
    t = re.sub(r"\s*\([\s&\+]+\)", "", t).strip()
