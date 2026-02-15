@@ -44,7 +44,7 @@ _PLATFORM_NOISE_RX = re.compile(
 )
 
 _TAIL_END_RX = re.compile(
-   r"([ &:-]|\([&\+\s]*\)|\[[&\+\s]*\])+",
+   r"([ &:-]+|\([&\+\s]*\)|\[[&\+\s]*\]) *$",
    re.I | re.X
 )
 
@@ -138,19 +138,38 @@ _RATING_MAP = {
    "ceroz": "mature 17+",
 }
 
+
+def _sub_space(rx: re.Pattern, s: str) -> str:
+   # Replace matches with a single space to prevent word-joining.
+   return rx.sub(" ", s)
+
+def _normalize_ws(s: str) -> str:
+   return re.sub(r"\s{2,}", " ", s).strip()
+
 def clean_title(name: str) -> str:
-   t = _MARK_RX.sub("", name or "").strip()
-   t = _TAIL_END_RX.sub("", t).strip()
-   t = re.sub(r"\s{2,}", " ", t).strip()
+   t = _MARK_RX.sub("", name or "")
+   t = _normalize_ws(t)
+
+   # Trim tail AFTER whitespace normalization, then normalize again
+   # (because removing tail can leave trailing spaces).
+   t = _TAIL_END_RX.sub("", t)
+   t = _normalize_ws(t)
    return t
 
 def strip_edition_noise(name: str) -> str:
-   t = clean_title(name)
-   t = _PLATFORM_NOISE_RX.sub("", t)
-   t = _EDITION_RX.sub("", t)
-   t = _TAIL_END_RX.sub("", t).strip()
-   t = re.sub(r"\s{2,}", " ", t).strip(" -–—")
-   return t or clean_title(name)
+   original = clean_title(name)
+   t = original
+
+   # Replace with spaces so we don't glue words together.
+   t = _sub_space(_PLATFORM_NOISE_RX, t)
+   t = _sub_space(_EDITION_RX, t)
+
+   # Now clean up new dangling punctuation created by removals.
+   t = _TAIL_END_RX.sub("", t)
+
+   t = _normalize_ws(t)
+   return t or original
+
 
 def price_to_string(amount: Optional[float], currency: Optional[str], *, flags: Optional[str] = None) -> str:
    # Flags can be "Free", "Unavailable", "Announced", etc. If provided, prefer it.
