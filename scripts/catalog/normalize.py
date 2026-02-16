@@ -3,6 +3,10 @@ from typing import Optional
 
 _MARK_RX = re.compile(r"[™®©]", re.U)
 
+# Some storefronts inject non-breaking / zero-width separators inside titles.
+# Treat them as regular spaces so names like "The\u200bGame" don't collapse.
+_INVISIBLE_SPACE_RX = re.compile(r"[\u00A0\u200B\u200C\u200D\u2060\uFEFF]", re.U)
+
 _EDITION_RX = re.compile(
    r"(?:\s*[:\-–—]\s*|\s+)"
    r"("
@@ -148,6 +152,7 @@ def _normalize_ws(s: str) -> str:
 
 def clean_title(name: str) -> str:
    t = _MARK_RX.sub("", name or "")
+   t = _INVISIBLE_SPACE_RX.sub(" ", t)
    t = _normalize_ws(t)
 
    # Trim tail AFTER whitespace normalization, then normalize again
