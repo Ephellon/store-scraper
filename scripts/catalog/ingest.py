@@ -12,8 +12,7 @@ from catalog.dedupe import canonical_key
 from catalog.io_writer import write_catalog
 from catalog.models import GameRecord
 from catalog.normalize import (
-   clean_title,
-   strip_edition_noise,
+   normalize_game_name,
    normalize_platforms,
    normalize_rating,
    parse_price_string,
@@ -33,7 +32,7 @@ def _normalized_name_score(name: str) -> tuple[int, int]:
 
 
 def _select_cluster_name(records: List[GameRecord]) -> str:
-   candidates = [strip_edition_noise(clean_title(record.name)) for record in records]
+   candidates = [normalize_game_name(record.name) for record in records]
    nonempty = [candidate for candidate in candidates if candidate]
    if not nonempty:
       return ""
@@ -60,7 +59,7 @@ def load_store_records(root: str, store_dir: str) -> List[GameRecord]:
       data = dict(payload)
       # Trust tuple key as the canonical display name; older payloads may carry
       # stale/incorrect names from previous normalizer behavior.
-      data["name"] = strip_edition_noise(clean_title(str(name or data.get("name") or "")))
+      data["name"] = normalize_game_name(str(name or data.get("name") or ""))
       data.setdefault("platforms", [])
       data.setdefault("rating", None)
       data.setdefault("type", None)

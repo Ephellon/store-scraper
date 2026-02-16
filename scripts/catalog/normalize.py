@@ -162,7 +162,10 @@ def _normalize_ws(s: str) -> str:
 def clean_title(name: str) -> str:
    t = _MARK_RX.sub("", name or "")
    t = _INVISIBLE_SPACE_RX.sub(" ", t)
-   t = _TOKEN_BOUNDARY_RX.sub(" ", t)
+   # Preserve already-spaced titles exactly as provided by the storefront.
+   # Only infer token boundaries for compacted names that have no whitespace.
+   if not re.search(r"\s", t):
+      t = _TOKEN_BOUNDARY_RX.sub(" ", t)
    t = _normalize_ws(t)
 
    # Trim tail AFTER whitespace normalization, then normalize again
@@ -184,6 +187,11 @@ def strip_edition_noise(name: str) -> str:
 
    t = _normalize_ws(t)
    return t or original
+
+
+def normalize_game_name(name: str) -> str:
+   """Normalize store title text for output without stripping existing spaces."""
+   return strip_edition_noise(clean_title(name))
 
 
 def price_to_string(amount: Optional[float], currency: Optional[str], *, flags: Optional[str] = None) -> str:

@@ -7,7 +7,7 @@ from typing import AsyncIterator, Dict, Any, List, Optional, Set
 
 from catalog.adapters.base import Adapter, AdapterConfig, Capabilities
 from catalog.models import GameRecord
-from catalog.normalize import clean_title, strip_edition_noise, price_to_string
+from catalog.normalize import normalize_game_name, price_to_string
 
 API_FEATURED = "https://store.steampowered.com/api/featuredcategories"
 API_DETAILS = "https://store.steampowered.com/api/appdetails"
@@ -259,7 +259,7 @@ class SteamAdapter(Adapter):
 
       # Title
       name_raw = app.get("name") or ""
-      name = strip_edition_noise(clean_title(name_raw))
+      name = normalize_game_name(name_raw)
       if not name:
          return None
 

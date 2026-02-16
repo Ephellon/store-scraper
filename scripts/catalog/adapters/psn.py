@@ -10,8 +10,7 @@ from urllib.parse import quote, quote_plus, urlparse, parse_qs
 from catalog.adapters.base import Adapter, AdapterConfig, Capabilities
 from catalog.models import GameRecord
 from catalog.normalize import (
-   clean_title,
-   strip_edition_noise,
+   normalize_game_name,
    price_to_string,
    normalize_platforms,
    normalize_rating,
@@ -244,7 +243,7 @@ class PSNAdapter(Adapter):
       Adjust keys to match your region’s actual payload.
       """
       # Common-ish fields seen across PSN JSON variants:
-      name = strip_edition_noise(clean_title(it.get("name") or it.get("title") or ""))
+      name = normalize_game_name(it.get("name") or it.get("title") or "")
       if not name:
          return None
 
@@ -395,7 +394,7 @@ class PSNAdapter(Adapter):
          break
 
    def _normalize_category_grid_item(self, it: Dict[str, Any]) -> Optional[GameRecord]:
-      name = strip_edition_noise(clean_title(it.get("name") or ""))
+      name = normalize_game_name(it.get("name") or "")
       if not name:
          return None
 
@@ -606,7 +605,7 @@ class PSNAdapter(Adapter):
       return out
 
    def _normalize_jsonld_item(self, b: Dict[str, Any], base_url: str) -> Optional[GameRecord]:
-      name = strip_edition_noise(clean_title(b.get("name") or ""))
+      name = normalize_game_name(b.get("name") or "")
       if not name:
          return None
 
