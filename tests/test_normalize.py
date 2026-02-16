@@ -9,3 +9,8 @@ def test_clean_title_splits_camel_case_tokens():
 def test_strip_edition_noise_after_token_boundary_split():
     assert strip_edition_noise("DarkQuestRemastered") == "Dark Quest"
     assert strip_edition_noise("SuperGame2DeluxeEdition") == "Super Game 2"
+
+
+def test_clean_title_preserves_existing_spaces():
+    assert clean_title("Airport Link: Connect Near Me") == "Airport Link: Connect Near Me"
+    assert clean_title("Anime Puzzle Quest") == "Anime Puzzle Quest"

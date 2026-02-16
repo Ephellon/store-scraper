@@ -13,8 +13,7 @@ import httpx
 from catalog.adapters.base import Adapter, AdapterConfig, Capabilities
 from catalog.models import GameRecord
 from catalog.normalize import (
-   clean_title,
-   strip_edition_noise,
+   normalize_game_name,
    price_to_string,
    normalize_platforms,
    normalize_rating,
@@ -487,12 +486,12 @@ class XboxAdapter(Adapter):
          return None
 
    def _normalize_browse_item(self, item: Dict[str, Any]) -> Optional[GameRecord]:
-      name = strip_edition_noise(clean_title(
+      name = normalize_game_name(
          item.get("title")
          or item.get("Title")
          or item.get("productTitle")
          or ""
-      ))
+      )
       if not name:
          return None
 
@@ -677,9 +676,9 @@ class XboxAdapter(Adapter):
 
    def _normalize_api_item(self, it: Dict[str, Any]) -> Optional[GameRecord]:
       # Titles can come from "Title", "Name", or "displayName"
-      name = strip_edition_noise(clean_title(
+      name = normalize_game_name(
          it.get("Title") or it.get("Name") or it.get("displayName") or it.get("title") or ""
-      ))
+      )
       if not name:
          return None
 
@@ -924,7 +923,7 @@ class XboxAdapter(Adapter):
       return guess
 
    def _normalize_jsonld_item(self, b: Dict[str, Any], base_url: str) -> Optional[GameRecord]:
-      name = strip_edition_noise(clean_title(b.get("name") or ""))
+      name = normalize_game_name(b.get("name") or "")
       if not name:
          return None
 

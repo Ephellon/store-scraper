@@ -9,8 +9,7 @@ from typing import AsyncIterator, Dict, Any, List, Optional, Set
 from catalog.adapters.base import Adapter, AdapterConfig, Capabilities
 from catalog.models import GameRecord
 from catalog.normalize import (
-   clean_title,
-   strip_edition_noise,
+   normalize_game_name,
    price_to_string,
    normalize_platforms,
    normalize_rating,
@@ -314,9 +313,9 @@ class NintendoAdapter(Adapter):
 
    def _normalize_api_item(self, it: Dict[str, Any]) -> Optional[GameRecord]:
       # Titles often under "title", "name", or "productTitle"
-      name = strip_edition_noise(clean_title(
+      name = normalize_game_name(
          it.get("title") or it.get("name") or it.get("productTitle") or ""
-      ))
+      )
       if not name:
          return None
 
@@ -593,7 +592,7 @@ class NintendoAdapter(Adapter):
       return out
 
    def _normalize_jsonld_item(self, b: Dict[str, Any], base_url: str) -> Optional[GameRecord]:
-      name = strip_edition_noise(clean_title(b.get("name") or ""))
+      name = normalize_game_name(b.get("name") or "")
       if not name:
          return None
 
