@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import os
+import re
 from collections import defaultdict
 from typing import Dict, Iterable, List
 
@@ -20,6 +21,23 @@ from catalog.normalize import (
 
 
 log = logging.getLogger("catalog.ingest")
+
+
+def _normalized_name_score(name: str) -> tuple[int, int]:
+   """
+   Prefer names that preserve token boundaries (spaces/punctuation) over
+   collapsed variants, then prefer longer labels as a tie-breaker.
+   """
+   token_count = len(re.findall(r"[a-z0-9]+", (name or "").lower()))
+   return (token_count, len(name or ""))
+
+
+def _select_cluster_name(records: List[GameRecord]) -> str:
+   candidates = [strip_edition_noise(clean_title(record.name)) for record in records]
+   nonempty = [candidate for candidate in candidates if candidate]
+   if not nonempty:
+      return ""
+   return max(nonempty, key=_normalized_name_score)
 
 
 def load_store_records(root: str, store_dir: str) -> List[GameRecord]:
@@ -40,7 +58,9 @@ def load_store_records(root: str, store_dir: str) -> List[GameRecord]:
       if not isinstance(payload, dict):
          continue
       data = dict(payload)
-      data.setdefault("name", name)
+      # Trust tuple key as the canonical display name; older payloads may carry
+      # stale/incorrect names from previous normalizer behavior.
+      data["name"] = strip_edition_noise(clean_title(str(name or data.get("name") or "")))
       data.setdefault("platforms", [])
       data.setdefault("rating", None)
       data.setdefault("type", None)
@@ -67,8 +87,7 @@ def merge_cluster(records: List[GameRecord]) -> GameRecord:
    records = list(records)
    records.sort(key=lambda r: (r.extra.get("source_store", r.store), r.name.lower()))
    base = records[0].model_copy(deep=True)
-   base_name = max(records, key=lambda r: len(r.name or ""))
-   base.name = strip_edition_noise(clean_title(base_name.name))
+   base.name = _select_cluster_name(records)
 
    platforms = []
    rating = base.rating
