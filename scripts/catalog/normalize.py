@@ -57,7 +57,7 @@ _PLATFORM_NOISE_RX = re.compile(
 )
 
 _TAIL_END_RX = re.compile(
-   r"([ &:-]+|\([&\+\s]*\)|\[[&\+\s]*\]) *$",
+   r"(?:\s*(?:[ \-:&]+|\([&\+\s]*\)|\[[&\+\s]*\]))+$",
    re.I | re.X
 )
 

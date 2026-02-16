@@ -14,3 +14,9 @@ def test_strip_edition_noise_after_token_boundary_split():
 def test_clean_title_preserves_existing_spaces():
     assert clean_title("Airport Link: Connect Near Me") == "Airport Link: Connect Near Me"
     assert clean_title("Anime Puzzle Quest") == "Anime Puzzle Quest"
+
+
+def test_clean_title_removes_trailing_tail_connectors():
+    assert clean_title("Game Name - &") == "Game Name"
+    assert clean_title("Game Name [& +]") == "Game Name"
+    assert clean_title("Game Name : ( + )") == "Game Name"
