@@ -31,13 +31,6 @@ def write_catalog(out_dir: str, store: str, rows: Iterable[GameRecord]) -> None:
       buckets[letter_bucket(rec.name)].append(item)
       bang.append((rec.name, item.model_dump(mode="json")))
 
-   # stable-ish ordering per-letter
-   for k in buckets:
-      buckets[k].sort(key=lambda i: i.name.lower())
-
-   # ensure global bang list is sorted for deterministic output
-   bang.sort(key=lambda item: item[0].lower())
-
    # Write per-letter
    for k in sorted(buckets):
       arr = buckets[k]

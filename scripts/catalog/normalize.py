@@ -190,8 +190,8 @@ def strip_edition_noise(name: str) -> str:
 
 
 def normalize_game_name(name: str) -> str:
-   """Normalize store title text for output without stripping existing spaces."""
-   return strip_edition_noise(clean_title(name))
+   """Preserve storefront title text exactly as fetched."""
+   return name or ""
 
 
 def price_to_string(amount: Optional[float], currency: Optional[str], *, flags: Optional[str] = None) -> str:
@@ -215,29 +215,17 @@ def letter_bucket(name: str) -> str:
    return "_"
 
 def normalize_rating(value: Optional[str]) -> Optional[str]:
-   if not value:
-      return None
-   v = re.sub(r"[^a-z0-9+]+", "", value.lower()).strip()
-   return _RATING_MAP.get(v)
+   return value if value else None
 
 def normalize_platform(value: str) -> str:
-   if not value:
-      return ""
-   key = re.sub(r"[^a-z0-9]+", "", value.lower()).strip()
-   return _PLATFORM_MAP.get(key, value.strip())
+   return value if value else ""
 
 def normalize_platforms(values) -> list[str]:
    out = []
-   seen = set()
    for v in values or []:
       norm = normalize_platform(str(v))
-      if not norm:
-         continue
-      key = norm.lower()
-      if key in seen:
-         continue
-      seen.add(key)
-      out.append(norm)
+      if norm:
+         out.append(norm)
    return out
 
 def parse_price_string(value: str) -> Optional[float]:
