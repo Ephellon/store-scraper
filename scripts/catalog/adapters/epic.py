@@ -638,7 +638,7 @@ class EpicAdapter(Adapter):
       # productSlug and urlSlug from searchStoreQuery are often UUIDs — use
       # only if they look like a real slug (contain a dash or lowercase letter
       # run, not a bare hex UUID).
-      for key in ("productSlug", "urlSlug"):
+      for key in ("urlSlug", "productSlug"):
          slug = elem.get(key)
          if not slug or not isinstance(slug, str) or slug == "[]":
             continue
