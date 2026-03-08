@@ -260,12 +260,15 @@ class TestBuildProductUrl:
       assert adapter._build_product_url({
          "_resolved_slug": "jack-move-8f3b25",
          "productSlug": "3dc025fd3ef6481d9fbba62d67f652ea",
+         "title": "Jack Move",
       }) == "https://store.epicgames.com/en-us/p/jack-move-8f3b25"
 
-   def test_product_slug_non_uuid(self):
+   def test_product_slug_matching_title(self):
       adapter = self._make_adapter()
-      assert adapter._build_product_url({"productSlug": "dark-souls"}) == \
-         "https://store.epicgames.com/en-us/p/dark-souls"
+      assert adapter._build_product_url({
+         "productSlug": "jurassic-world-evolution",
+         "title": "Jurassic World Evolution",
+      }) == "https://store.epicgames.com/en-us/p/jurassic-world-evolution"
 
    def test_uuid_product_slug_falls_back_to_search(self):
       adapter = self._make_adapter()
@@ -282,19 +285,78 @@ class TestBuildProductUrl:
       )
       assert "/browse?q=" in result
 
-   def test_url_slug_non_uuid(self):
+   def test_codename_generalaudience_detected(self):
       adapter = self._make_adapter()
-      assert adapter._build_product_url({"urlSlug": "hollow-knight"}) == \
-         "https://store.epicgames.com/en-us/p/hollow-knight"
+      result = adapter._build_product_url(
+         {"productSlug": "phosphorusgeneralaudience", "title": "Just Die Already"}
+      )
+      assert "/browse?q=" in result
+      assert "Just" in result
+
+   def test_codename_grouse_detected(self):
+      adapter = self._make_adapter()
+      result = adapter._build_product_url(
+         {"productSlug": "grousegeneralaudience", "title": "Jotun: Valhalla Edition"}
+      )
+      assert "/browse?q=" in result
+
+   def test_codename_with_common_suffix_detected(self):
+      adapter = self._make_adapter()
+      result = adapter._build_product_url(
+         {"productSlug": "kakopo-reloaded", "title": "Just Cause 4 Reloaded"}
+      )
+      assert "/browse?q=" in result
+
+   def test_real_slug_passes_validation(self):
+      adapter = self._make_adapter()
+      assert adapter._build_product_url({
+         "urlSlug": "journey-to-the-savage-planet",
+         "title": "Journey to the Savage Planet",
+      }) == "https://store.epicgames.com/en-us/p/journey-to-the-savage-planet"
 
    def test_direct_url(self):
       adapter = self._make_adapter()
       assert adapter._build_product_url({"url": "https://store.epicgames.com/custom"}) == \
          "https://store.epicgames.com/custom"
 
-   def test_no_slug_returns_base(self):
+   def test_no_slug_with_name_returns_search(self):
+      adapter = self._make_adapter()
+      result = adapter._build_product_url({"title": "Some Game"})
+      assert "/browse?q=" in result
+
+   def test_no_slug_no_name_returns_base(self):
       adapter = self._make_adapter()
       assert adapter._build_product_url({}) == "https://store.epicgames.com/en-us"
+
+
+# ─── EpicAdapter._slug_looks_valid ───────────────────────────────────────
+
+class TestSlugLooksValid:
+   def test_matching_slug(self):
+      assert EpicAdapter._slug_looks_valid("jurassic-world-evolution", "Jurassic World Evolution")
+
+   def test_codename_no_overlap(self):
+      assert not EpicAdapter._slug_looks_valid("phosphorusgeneralaudience", "Just Die Already")
+
+   def test_codename_with_stop_word_overlap_only(self):
+      # "reloaded" is a stop word — shouldn't count
+      assert not EpicAdapter._slug_looks_valid("kakopo-reloaded", "Just Cause 4 Reloaded")
+
+   def test_single_word_title(self):
+      assert EpicAdapter._slug_looks_valid("hades", "Hades")
+
+   def test_slug_with_hash_suffix(self):
+      assert EpicAdapter._slug_looks_valid("jack-move-8f3b25", "Jack Move")
+
+   def test_partial_slug(self):
+      # "just-cause-4" for "Just Cause 4 Reloaded" — good enough
+      assert EpicAdapter._slug_looks_valid("just-cause-4", "Just Cause 4 Reloaded")
+
+   def test_empty_name_trusts_slug(self):
+      assert EpicAdapter._slug_looks_valid("anything", "")
+
+   def test_empty_slug(self):
+      assert not EpicAdapter._slug_looks_valid("", "Some Game")
 
 
 # ─── EpicAdapter._normalize_element extras ───────────────────────────────

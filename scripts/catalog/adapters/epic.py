@@ -65,6 +65,14 @@ _FALLBACK_IMAGE = (
    "https://static-assets-prod.epicgames.com/epic-store/static/favicon.ico"
 )
 
+# Words too generic to use for slug validation — these appear in many titles
+# but rarely help distinguish codenames from real slugs.
+_SLUG_STOP_WORDS = frozenset({
+   "the", "and", "for", "edition", "game", "deluxe", "reloaded",
+   "remastered", "definitive", "complete", "standard", "ultimate",
+   "bundle", "pack", "collection", "goty", "version", "vol",
+})
+
 
 @dataclass(slots=True)
 class EpicEndpoints:
@@ -627,7 +635,7 @@ class EpicAdapter(Adapter):
 
       # Prefer the hydrated slug from getCatalogOffer
       resolved = elem.get("_resolved_slug")
-      if resolved and isinstance(resolved, str):
+      if resolved and isinstance(resolved, str) and self._slug_looks_valid(resolved, name):
          return f"{base}/p/{resolved}"
 
       url = elem.get("url")
@@ -640,15 +648,40 @@ class EpicAdapter(Adapter):
          slug = elem.get(key)
          if not slug or not isinstance(slug, str) or slug == "[]":
             continue
-         # Skip values that look like bare UUIDs (32 hex chars with optional dashes)
+         # Skip bare UUIDs
          stripped = slug.replace("-", "")
          if len(stripped) == 32 and all(c in "0123456789abcdef" for c in stripped.lower()):
-            # ↓   Unused. Fabricated slug    ↓
-            clug = re.sub(r"\W+", "-", name).strip("-").lower()
+            return f"{base}/browse?q={quote(name)}"
+         # Skip internal codenames (e.g. "phosphorusgeneralaudience", "kakopo-reloaded")
+         if not self._slug_looks_valid(slug, name):
             return f"{base}/browse?q={quote(name)}"
          return f"{base}/p/{slug}"
 
+      if name:
+         return f"{base}/browse?q={quote(name)}"
       return base
+
+   @staticmethod
+   def _slug_looks_valid(slug: str, name: str) -> bool:
+      """
+      Check that a slug plausibly corresponds to the game title.
+
+      Epic uses internal codenames as productSlug for some games
+      (e.g. "phosphorusgeneralaudience" for "Just Die Already",
+       "kakopo-reloaded" for "Just Cause 4 Reloaded").
+      Detect these by checking whether the slug shares enough words
+      with the title.
+      """
+      if not slug or not name:
+         return bool(slug)
+      # Extract meaningful words (3+ chars) from the title
+      title_words = [w for w in re.findall(r"[a-z]{3,}", name.lower()) if w not in _SLUG_STOP_WORDS]
+      if not title_words:
+         return True  # can't validate, trust the slug
+      slug_lower = slug.lower()
+      matches = sum(1 for w in title_words if w in slug_lower)
+      # At least half of the title words should appear in the slug
+      return matches >= max(1, len(title_words) * 0.5)
 
    def _extract_price(self, elem: Dict[str, Any]) -> str:
       """Extract formatted price from a GraphQL element."""
