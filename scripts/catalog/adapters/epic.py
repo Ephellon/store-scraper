@@ -623,6 +623,7 @@ class EpicAdapter(Adapter):
    def _build_product_url(self, elem: Dict[str, Any]) -> str:
       loc = self.config.locale.replace("_", "-").lower()
       base = f"https://store.epicgames.com/{loc}"
+      name = elem.get("title") or elem.get("name") or ""
 
       # Prefer the hydrated slug from getCatalogOffer
       resolved = elem.get("_resolved_slug")
@@ -635,9 +636,6 @@ class EpicAdapter(Adapter):
             return url
          return f"{base}{url}" if url.startswith("/") else f"{base}/{url}"
 
-      # productSlug and urlSlug from searchStoreQuery are often UUIDs — use
-      # only if they look like a real slug (contain a dash or lowercase letter
-      # run, not a bare hex UUID).
       for key in ("urlSlug", "productSlug"):
          slug = elem.get(key)
          if not slug or not isinstance(slug, str) or slug == "[]":
@@ -645,7 +643,9 @@ class EpicAdapter(Adapter):
          # Skip values that look like bare UUIDs (32 hex chars with optional dashes)
          stripped = slug.replace("-", "")
          if len(stripped) == 32 and all(c in "0123456789abcdef" for c in stripped.lower()):
-            continue
+            # ↓   Unused. Fabricated slug    ↓
+            clug = re.sub(r"\W+", "-", name).strip("-").lower()
+            return f"{base}/browse?q={quote(name)}"
          return f"{base}/p/{slug}"
 
       return base

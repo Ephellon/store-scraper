@@ -267,18 +267,20 @@ class TestBuildProductUrl:
       assert adapter._build_product_url({"productSlug": "dark-souls"}) == \
          "https://store.epicgames.com/en-us/p/dark-souls"
 
-   def test_uuid_product_slug_skipped(self):
+   def test_uuid_product_slug_falls_back_to_search(self):
       adapter = self._make_adapter()
-      # A bare UUID should not produce /p/{uuid}
-      assert adapter._build_product_url(
-         {"productSlug": "3dc025fd3ef6481d9fbba62d67f652ea"}
-      ) == "https://store.epicgames.com/en-us"
+      result = adapter._build_product_url(
+         {"productSlug": "3dc025fd3ef6481d9fbba62d67f652ea", "title": "Jack Move"}
+      )
+      assert "/browse?q=" in result
+      assert "Jack" in result
 
-   def test_uuid_with_dashes_skipped(self):
+   def test_uuid_with_dashes_falls_back_to_search(self):
       adapter = self._make_adapter()
-      assert adapter._build_product_url(
-         {"urlSlug": "3dc025fd-3ef6-481d-9fbb-a62d67f652ea"}
-      ) == "https://store.epicgames.com/en-us"
+      result = adapter._build_product_url(
+         {"urlSlug": "3dc025fd-3ef6-481d-9fbb-a62d67f652ea", "title": "Jack Move"}
+      )
+      assert "/browse?q=" in result
 
    def test_url_slug_non_uuid(self):
       adapter = self._make_adapter()
