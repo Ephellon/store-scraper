@@ -10,6 +10,7 @@ from catalog.adapters.epic import (
    _extract_rating,
    _FALLBACK_IMAGE,
    SEARCH_STORE_HASH,
+   CATALOG_OFFER_HASH,
 )
 from catalog.adapters.base import AdapterConfig
 
@@ -109,9 +110,6 @@ class TestEpicEndpoints:
       assert "games/demo" in ep.category
       assert "games/edition/base" in ep.category
       assert "|" in ep.category
-
-   def test_persisted_hash_is_set(self):
-      assert len(SEARCH_STORE_HASH) == 64
 
    def test_default_impersonate(self):
       ep = EpicEndpoints()
@@ -257,12 +255,32 @@ class TestBuildProductUrl:
    def _make_adapter(self):
       return EpicAdapter(config=AdapterConfig(country="US", locale="en-US"))
 
-   def test_product_slug(self):
+   def test_resolved_slug_preferred(self):
+      adapter = self._make_adapter()
+      assert adapter._build_product_url({
+         "_resolved_slug": "jack-move-8f3b25",
+         "productSlug": "3dc025fd3ef6481d9fbba62d67f652ea",
+      }) == "https://store.epicgames.com/en-us/p/jack-move-8f3b25"
+
+   def test_product_slug_non_uuid(self):
       adapter = self._make_adapter()
       assert adapter._build_product_url({"productSlug": "dark-souls"}) == \
          "https://store.epicgames.com/en-us/p/dark-souls"
 
-   def test_url_slug_fallback(self):
+   def test_uuid_product_slug_skipped(self):
+      adapter = self._make_adapter()
+      # A bare UUID should not produce /p/{uuid}
+      assert adapter._build_product_url(
+         {"productSlug": "3dc025fd3ef6481d9fbba62d67f652ea"}
+      ) == "https://store.epicgames.com/en-us"
+
+   def test_uuid_with_dashes_skipped(self):
+      adapter = self._make_adapter()
+      assert adapter._build_product_url(
+         {"urlSlug": "3dc025fd-3ef6-481d-9fbb-a62d67f652ea"}
+      ) == "https://store.epicgames.com/en-us"
+
+   def test_url_slug_non_uuid(self):
       adapter = self._make_adapter()
       assert adapter._build_product_url({"urlSlug": "hollow-knight"}) == \
          "https://store.epicgames.com/en-us/p/hollow-knight"
@@ -275,6 +293,63 @@ class TestBuildProductUrl:
    def test_no_slug_returns_base(self):
       adapter = self._make_adapter()
       assert adapter._build_product_url({}) == "https://store.epicgames.com/en-us"
+
+
+# ─── EpicAdapter._normalize_element extras ───────────────────────────────
+
+class TestNormalizeElementExtra:
+   def _make_adapter(self):
+      return EpicAdapter(config=AdapterConfig(country="US", locale="en-US"))
+
+   def test_offerId_used_as_uuid(self):
+      adapter = self._make_adapter()
+      elem = {
+         "title": "Test Game",
+         "id": "elem-id-123",
+         "offerId": "offer-id-456",
+         "namespace": "sandbox-789",
+         "keyImages": [],
+         "customAttributes": [],
+         "tags": [],
+         "categories": [],
+         "price": {"totalPrice": {"originalPrice": 0, "currencyCode": "USD",
+                   "currencyInfo": {"decimals": 2}, "fmtPrice": {"originalPrice": "0"}}},
+      }
+      rec = adapter._normalize_element(elem)
+      assert rec is not None
+      assert rec.uuid == "offer-id-456"
+      assert rec.extra.get("sandboxId") == "sandbox-789"
+      assert rec.extra.get("offerId") == "offer-id-456"
+
+   def test_falls_back_to_id_when_no_offerId(self):
+      adapter = self._make_adapter()
+      elem = {
+         "title": "Test Game",
+         "id": "elem-id-123",
+         "namespace": "sandbox-789",
+         "keyImages": [],
+         "customAttributes": [],
+         "tags": [],
+         "categories": [],
+         "price": {"totalPrice": {"originalPrice": 0, "currencyCode": "USD",
+                   "currencyInfo": {"decimals": 2}, "fmtPrice": {"originalPrice": "0"}}},
+      }
+      rec = adapter._normalize_element(elem)
+      assert rec is not None
+      assert rec.uuid == "elem-id-123"
+
+
+# ─── Persisted query hashes ──────────────────────────────────────────────
+
+class TestPersistedHashes:
+   def test_search_hash_length(self):
+      assert len(SEARCH_STORE_HASH) == 64
+
+   def test_catalog_offer_hash_length(self):
+      assert len(CATALOG_OFFER_HASH) == 64
+
+   def test_hashes_are_different(self):
+      assert SEARCH_STORE_HASH != CATALOG_OFFER_HASH
 
 
 # ─── EpicAdapter._extract_price ─────────────────────────────────────────

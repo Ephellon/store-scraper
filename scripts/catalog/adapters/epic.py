@@ -41,8 +41,9 @@ except ImportError:
 
 EPIC_LIMIT = DomainLimiter(2.0)
 
-# ── Persisted query hash (from browser traffic) ─────────────────────────
+# ── Persisted query hashes (from browser traffic) ────────────────────────
 SEARCH_STORE_HASH = "29d49ab31d438cd90be2d554d2d54704951e4223a8fcd290fcf68308841a1979"
+CATALOG_OFFER_HASH = "ec112951b1824e1e215daecae17db4069c737295d4a697ddb9832923f93a326e"
 
 # ── REST endpoints (Akamai CDN, no CF) ───────────────────────────────────
 FREE_GAMES_URL = "https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions"
@@ -163,6 +164,7 @@ class EpicAdapter(Adapter):
       self._resume_keys: Set[str] = set()
       self._graphql_available = HAS_CURL_CFFI
       self._cffi_session: Optional[CffiSession] = None if not HAS_CURL_CFFI else None
+      self._slug_cache: Dict[str, Optional[str]] = {}  # "sandboxId:offerId" → urlSlug
 
    # ── lifecycle: manage curl_cffi session alongside the httpx client ────
 
@@ -274,6 +276,71 @@ class EpicAdapter(Adapter):
 
    # ── Strategy A: GraphQL via curl_cffi ─────────────────────────────────
 
+   async def _resolve_offer_slug(self, offer_id: str, sandbox_id: str) -> Optional[str]:
+      """Call getCatalogOffer to resolve the real urlSlug for a game."""
+      cache_key = f"{sandbox_id}:{offer_id}"
+      if cache_key in self._slug_cache:
+         return self._slug_cache[cache_key]
+
+      country = self.config.country.upper()
+      locale = self.config.locale.replace("_", "-")
+
+      variables = {
+         "country": country,
+         "locale": locale,
+         "offerId": offer_id,
+         "sandboxId": sandbox_id,
+      }
+      extensions = {
+         "persistedQuery": {
+            "version": 1,
+            "sha256Hash": CATALOG_OFFER_HASH,
+         }
+      }
+
+      url = (
+         f"{self.endpoints.graphql_url}"
+         f"?operationName=getCatalogOffer"
+         f"&variables={quote(json.dumps(variables, separators=(',', ':')))}"
+         f"&extensions={quote(json.dumps(extensions, separators=(',', ':')))}"
+      )
+
+      try:
+         resp = await self._cffi_session.get(
+            url,
+            headers=self._graphql_headers(),
+            timeout=15,
+         )
+         if resp.status_code != 200:
+            self._slug_cache[cache_key] = None
+            return None
+         js = resp.json()
+         offer = (js.get("data") or {}).get("Catalog", {}).get("catalogOffer") or {}
+         slug = offer.get("urlSlug")
+         self._slug_cache[cache_key] = slug or None
+         return slug or None
+      except Exception as exc:
+         self.log.debug("epic: getCatalogOffer failed for %s/%s: %s", sandbox_id, offer_id, exc)
+         self._slug_cache[cache_key] = None
+         return None
+
+   async def _hydrate_slugs(self, elements: List[Dict[str, Any]]) -> None:
+      """Resolve real URL slugs for a batch of elements concurrently."""
+      sem = asyncio.Semaphore(5)
+
+      async def resolve_one(elem: Dict[str, Any]) -> None:
+         async with sem:
+            offer_id = elem.get("offerId") or elem.get("id")
+            sandbox_id = elem.get("sandboxId") or elem.get("namespace")
+            if not offer_id or not sandbox_id:
+               return
+            slug = await self._resolve_offer_slug(str(offer_id), str(sandbox_id))
+            if slug:
+               elem["_resolved_slug"] = slug
+            await asyncio.sleep(0.05)
+
+      await asyncio.gather(*(resolve_one(e) for e in elements if isinstance(e, dict)))
+
    async def _iter_graphql(self) -> AsyncIterator[Optional[GameRecord]]:
       assert self._cffi_session is not None
 
@@ -341,16 +408,17 @@ class EpicAdapter(Adapter):
 
          if errors:
             if elements:
-               # Per-element errors (e.g. stale offerMappings) — log and continue
                self.log.debug("epic: GraphQL returned %d partial errors at start=%d (continuing)", len(errors), start)
             else:
-               # No data at all — bail
                self.log.warning("epic: GraphQL returned errors with no data: %s", errors)
                self._graphql_available = False
                break
 
          paging = search_store.get("paging") or {}
          total = paging.get("total")
+
+         # Hydrate real URL slugs via getCatalogOffer (batched, concurrent)
+         await self._hydrate_slugs(elements)
 
          produced = 0
          for elem in elements:
@@ -461,7 +529,8 @@ class EpicAdapter(Adapter):
       if not name:
          return None
 
-      elem_id = elem.get("id")
+      offer_id = elem.get("offerId") or elem.get("id")
+      sandbox_id = elem.get("sandboxId") or elem.get("namespace")
       key_images = elem.get("keyImages") or []
       image = _pick_image(key_images)
       href = self._build_product_url(elem)
@@ -481,16 +550,23 @@ class EpicAdapter(Adapter):
                record_type = "demo"
                break
 
+      extra: Dict[str, Any] = {}
+      if sandbox_id:
+         extra["sandboxId"] = str(sandbox_id)
+      if offer_id:
+         extra["offerId"] = str(offer_id)
+
       return GameRecord(
          store="epic",
          name=name,
          price=price_str,
          image=image,
          href=href,
-         uuid=str(elem_id) if elem_id else None,
+         uuid=str(offer_id) if offer_id else None,
          platforms=platforms,
          rating=rating,
          type=record_type,
+         extra=extra,
       )
 
    def _normalize_storefront_item(self, item: Dict[str, Any]) -> Optional[GameRecord]:
@@ -548,27 +624,29 @@ class EpicAdapter(Adapter):
       loc = self.config.locale.replace("_", "-").lower()
       base = f"https://store.epicgames.com/{loc}"
 
+      # Prefer the hydrated slug from getCatalogOffer
+      resolved = elem.get("_resolved_slug")
+      if resolved and isinstance(resolved, str):
+         return f"{base}/p/{resolved}"
+
       url = elem.get("url")
       if url and isinstance(url, str):
          if url.startswith("http"):
             return url
          return f"{base}{url}" if url.startswith("/") else f"{base}/{url}"
 
-      slug = elem.get("productSlug")
-      if slug and isinstance(slug, str) and slug != "[]":
+      # productSlug and urlSlug from searchStoreQuery are often UUIDs — use
+      # only if they look like a real slug (contain a dash or lowercase letter
+      # run, not a bare hex UUID).
+      for key in ("productSlug", "urlSlug"):
+         slug = elem.get(key)
+         if not slug or not isinstance(slug, str) or slug == "[]":
+            continue
+         # Skip values that look like bare UUIDs (32 hex chars with optional dashes)
+         stripped = slug.replace("-", "")
+         if len(stripped) == 32 and all(c in "0123456789abcdef" for c in stripped.lower()):
+            continue
          return f"{base}/p/{slug}"
-
-      url_slug = elem.get("urlSlug")
-      if url_slug and isinstance(url_slug, str):
-         return f"{base}/p/{url_slug}"
-
-      namespace = elem.get("namespace")
-      items = elem.get("items") or []
-      if namespace and items:
-         first_item = items[0] if isinstance(items[0], dict) else {}
-         item_id = first_item.get("id")
-         if item_id:
-            return f"{base}/p/{namespace}"
 
       return base
 
