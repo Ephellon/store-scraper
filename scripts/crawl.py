@@ -8,6 +8,7 @@ from catalog.adapters.steam import SteamAdapter
 from catalog.adapters.psn import PSNAdapter
 from catalog.adapters.xbox import XboxAdapter
 from catalog.adapters.nintendo import NintendoAdapter
+from catalog.adapters.epic import EpicAdapter
 from catalog.db import CatalogCache, make_session
 from catalog.runner import run_adapter
 
@@ -21,11 +22,12 @@ FACTORY = {
    "psn": lambda c: PSNAdapter(config=c),
    "xbox": lambda c: XboxAdapter(config=c),
    "nintendo": lambda c: NintendoAdapter(config=c),
+   "epic": lambda c: EpicAdapter(config=c),
 }
 
 async def main():
    ap = argparse.ArgumentParser(description="Crawl game stores and write JSON outputs.")
-   ap.add_argument("--stores", type=str, default="psn,xbox,steam,nintendo", help="Comma-separated list of stores: steam,psn,xbox,nintendo")
+   ap.add_argument("--stores", type=str, default="psn,xbox,steam,nintendo,epic", help="Comma-separated list of stores: steam,psn,xbox,nintendo,epic")
    ap.add_argument("--out", type=str, default="./out", help="Output directory")
    ap.add_argument("--country", type=str, default="US", help="Region country code (e.g., US)")
    ap.add_argument("--locale", type=str, default="en-US", help="Locale (e.g., en-US)")

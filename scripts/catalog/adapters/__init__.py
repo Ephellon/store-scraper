@@ -10,6 +10,7 @@ Available adapters:
    - PSNAdapter
    - XboxAdapter
    - NintendoAdapter
+   - EpicAdapter
 """
 
 from catalog.adapters.base import Adapter, AdapterConfig, Capabilities
@@ -17,6 +18,7 @@ from catalog.adapters.steam import SteamAdapter
 from catalog.adapters.psn import PSNAdapter
 from catalog.adapters.xbox import XboxAdapter
 from catalog.adapters.nintendo import NintendoAdapter
+from catalog.adapters.epic import EpicAdapter
 
 __all__ = [
    "Adapter",
@@ -26,6 +28,7 @@ __all__ = [
    "PSNAdapter",
    "XboxAdapter",
    "NintendoAdapter",
+   "EpicAdapter",
 ]
 
 ADAPTERS = {
@@ -33,6 +36,7 @@ ADAPTERS = {
    "psn": PSNAdapter,
    "xbox": XboxAdapter,
    "nintendo": NintendoAdapter,
+   "epic": EpicAdapter,
 }
 
 def get_adapter(name: str):
@@ -40,7 +44,7 @@ def get_adapter(name: str):
    Return an adapter class by name, or None if not found.
    Example:
        from catalog.adapters import get_adapter
-       AdapterClass = get_adapter("steam")
+       AdapterClass = get_adapter("epic")
        if AdapterClass:
            adapter = AdapterClass(config=AdapterConfig())
    """

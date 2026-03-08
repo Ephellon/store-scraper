@@ -1,5 +1,5 @@
 import re
-from typing import Optional
+from typing import List, Optional
 
 _MARK_RX = re.compile(r"[™®©]", re.U)
 
@@ -21,7 +21,7 @@ _EDITION_RX = re.compile(
    r"("
       r"deluxe|definitive|silver|gold|platinum|ultimate|goty|complete|remastered|hd|bundle|collection|edition|standard|launch|classic"
       r"|game(?:\s*[\-–—:]\s*|\s+)of(?:\s*[\-–—:]\s*|\s+)the(?:\s*[\-–—:]\s*|\s+)year"
-      r"|director[’']?s(?:\s*[\-–—:]\s*|\s+)cut"
+      r"|director['']?s(?:\s*[\-–—:]\s*|\s+)cut"
    r")"
    r"(?:\s+edition)?\b",
    re.I
@@ -190,8 +190,8 @@ def strip_edition_noise(name: str) -> str:
 
 
 def normalize_game_name(name: str) -> str:
-   """Preserve storefront title text exactly as fetched."""
-   return name or ""
+   """Clean trademark symbols, invisible characters, and dangling punctuation."""
+   return clean_title(name)
 
 
 def price_to_string(amount: Optional[float], currency: Optional[str], *, flags: Optional[str] = None) -> str:
@@ -214,19 +214,63 @@ def letter_bucket(name: str) -> str:
       return ch
    return "_"
 
+
 def normalize_rating(value: Optional[str]) -> Optional[str]:
-   return value if value else None
+   """Map raw rating labels (ESRB / PEGI / CERO) to canonical values."""
+   if not value:
+      return None
+   # Build a compact key: lowercase, strip spaces/punctuation
+   key = re.sub(r"[^a-z0-9+]", "", value.lower())
+   mapped = _RATING_MAP.get(key)
+   if mapped:
+      return mapped
+   # If the value already matches a canonical label, keep it
+   if value.lower() in _RATING_MAP.values():
+      return value.lower()
+   # Return cleaned value as-is when no mapping exists
+   return value
+
 
 def normalize_platform(value: str) -> str:
-   return value if value else ""
+   """Map a single raw platform string to its canonical label."""
+   if not value:
+      return ""
+   # Compact key: lowercase, strip non-alnum (except |)
+   key = re.sub(r"[^a-z0-9|]", "", value.lower())
+   mapped = _PLATFORM_MAP.get(key)
+   if mapped:
+      return mapped
+   # Slash-separated combos like "PS4/PS5" may already be canonical
+   if "/" in value:
+      parts = [normalize_platform(p.strip()) for p in value.split("/")]
+      return "/".join(p for p in parts if p)
+   # Return original when no mapping exists
+   return value.strip()
 
-def normalize_platforms(values) -> list[str]:
-   out = []
+
+def normalize_platforms(values) -> List[str]:
+   """Normalize and deduplicate a list of platform strings."""
+   out: List[str] = []
+   seen: set[str] = set()
    for v in values or []:
       norm = normalize_platform(str(v))
-      if norm:
-         out.append(norm)
+      if not norm:
+         continue
+      # Slash-combos (e.g. "PS4/PS5") expand into individual entries
+      if "/" in norm:
+         for part in norm.split("/"):
+            part = part.strip()
+            low = part.lower()
+            if part and low not in seen:
+               seen.add(low)
+               out.append(part)
+      else:
+         low = norm.lower()
+         if low not in seen:
+            seen.add(low)
+            out.append(norm)
    return out
+
 
 def parse_price_string(value: str) -> Optional[float]:
    if not value or value.lower() in {"free", "free+", "unavailable"}:

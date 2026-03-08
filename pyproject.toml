@@ -13,6 +13,7 @@ dependencies = [
    "aiolimiter>=1.1.0",
    "rich>=13.7",
    "sqlalchemy>=2.0.44",
+   "curl_cffi>=0.7",
 ]
 
 [project.optional-dependencies]
@@ -23,3 +24,4 @@ line-length = 96
 
 [tool.pytest.ini_options]
 addopts = "-q"
+pythonpath = ["scripts"]

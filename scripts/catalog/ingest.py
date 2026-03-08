@@ -175,7 +175,7 @@ def main() -> None:
    ap.add_argument(
       "--stores",
       type=str,
-      default="psn,xbox,nintendo,steam",
+      default="psn,xbox,nintendo,steam,epic",
       help="Comma-separated list of base store names to merge (use 'all' for every store)",
    )
    args = ap.parse_args()

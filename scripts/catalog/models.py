@@ -2,6 +2,16 @@ from __future__ import annotations
 from typing import List, Optional, Dict, Any, Literal
 from pydantic import BaseModel, HttpUrl, Field
 
+# Child catalogs (e.g. ps4, ps5) are derived from parent adapters and need
+# valid store labels for writing separate output directories.
+STORE_LITERAL = Literal[
+   "steam",
+   "epic",
+   "psn", "ps4", "ps5",
+   "xbox",
+   "nintendo",
+]
+
 class LetterItem(BaseModel):
    """
    Shape for per-letter arrays (_.json, a.json ... z.json)
@@ -23,7 +33,7 @@ class GameRecord(BaseModel):
    This maps 1:1 to LetterItem when writing per-letter files,
    and to [name, {..}] pairs for the bang file.
    """
-   store: Literal["steam", "psn", "xbox", "nintendo"]
+   store: STORE_LITERAL
    name: str
    price: str
    image: HttpUrl
