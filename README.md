@@ -8,6 +8,7 @@ This project is used to update the databases used by [Game Store Catalog](https:
 * PlayStation Network (PSN) — Updates take ≤ 15min
 * Xbox Store — Updates take ≤ 15min
 * Nintendo eShop — Updates take ≤ 15min
+* Epic Games — Updates take ≤ 15min
 
 ### Purpose
 
@@ -99,7 +100,8 @@ This makes the project modular and easy to extend.
  ├─ steam.py       → Steam Store API
  ├─ psn.py         → PlayStation Store API
  ├─ xbox.py        → Microsoft Store API
- └─ nintendo.py    → Nintendo eShop
+ ├─ nintendo.py    → Nintendo eShop
+ └─ epic.py        → Epic Games
 ```
 
 Adapters yield normalized `GameRecord` objects that match the schema above.
@@ -154,7 +156,7 @@ INSTALL
 crawl.bat --stores steam --out ./out --country US --locale en-US
 
 # Run multiple stores
-crawl.bat --stores steam,psn,xbox,nintendo --out ./out
+crawl.bat --stores steam,psn,xbox,nintendo,epic --out ./out
 
 # Persist progress to resume after interruptions (default path: catalog-cache.db)
 crawl.bat --stores steam --cache-db ./catalog-cache.db
@@ -173,7 +175,7 @@ pip install -e ".[dev]"
 python scripts/crawl.py --stores steam --out ./out --country US --locale en-US
 
 # Run multiple stores
-python scripts/crawl.py --stores steam,psn,xbox,nintendo --out ./out
+python scripts/crawl.py --stores steam,psn,xbox,nintendo,epic --out ./out
 
 # Use the authenticated Steam app list (requires a Steam Web API key)
 STEAM_API_KEY=your_key_here python scripts/crawl.py --stores steam --out ./out
@@ -233,6 +235,7 @@ store-scraper/
     │   │   │   ├─ nintendo.py      # Working Adapter (Nintendo)
     │   │   │   ├─ psn.py           # Working Adapter (PlayStation)
     │   │   │   ├─ steam.py         # Working Adapter (Steam)
+    │   │   │   ├─ epic.py          # Working Adapter (Epic Games)
     │   │   │   └─ xbox.py          # Working Adapter (Xbox)
     │   │   │
     │   │   ├─ __init__.py
