@@ -263,6 +263,15 @@ class TestBuildProductUrl:
          "title": "Jack Move",
       }) == "https://store.epicgames.com/en-us/p/jack-move-8f3b25"
 
+   def test_resolved_slug_codename_rejected(self):
+      adapter = self._make_adapter()
+      result = adapter._build_product_url({
+         "_resolved_slug": "anning",
+         "title": "Jurassic World Evolution 3",
+      })
+      assert "/browse?q=" in result
+      assert "Jurassic" in result
+
    def test_product_slug_matching_title(self):
       adapter = self._make_adapter()
       assert adapter._build_product_url({
@@ -314,10 +323,27 @@ class TestBuildProductUrl:
          "title": "Journey to the Savage Planet",
       }) == "https://store.epicgames.com/en-us/p/journey-to-the-savage-planet"
 
-   def test_direct_url(self):
+   def test_direct_url_full_https(self):
       adapter = self._make_adapter()
       assert adapter._build_product_url({"url": "https://store.epicgames.com/custom"}) == \
          "https://store.epicgames.com/custom"
+
+   def test_url_field_codename_rejected(self):
+      adapter = self._make_adapter()
+      result = adapter._build_product_url({
+         "url": "/p/anning",
+         "title": "Jurassic World Evolution 3",
+      })
+      assert "/browse?q=" in result
+      assert "Jurassic" in result
+
+   def test_url_field_valid_slug_accepted(self):
+      adapter = self._make_adapter()
+      result = adapter._build_product_url({
+         "url": "/p/jurassic-world-evolution",
+         "title": "Jurassic World Evolution",
+      })
+      assert result == "https://store.epicgames.com/en-us/p/jurassic-world-evolution"
 
    def test_no_slug_with_name_returns_search(self):
       adapter = self._make_adapter()

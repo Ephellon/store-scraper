@@ -591,17 +591,7 @@ class EpicAdapter(Adapter):
       key_images = item.get("keyImages") or []
       image = _pick_image(key_images) if key_images else _FALLBACK_IMAGE
 
-      slug = item.get("productSlug") or item.get("urlSlug") or item.get("url")
-      loc = self.config.locale.replace("_", "-").lower()
-      if slug and isinstance(slug, str):
-         if slug.startswith("http"):
-            href = slug
-         elif slug.startswith("/"):
-            href = f"https://store.epicgames.com{slug}"
-         else:
-            href = f"https://store.epicgames.com/{loc}/p/{slug}"
-      else:
-         href = f"https://store.epicgames.com/{loc}"
+      href = self._build_product_url(item)
 
       price_str = self._extract_price(item)
       if price_str == "Unavailable":
@@ -638,11 +628,15 @@ class EpicAdapter(Adapter):
       if resolved and isinstance(resolved, str) and self._slug_looks_valid(resolved, name):
          return f"{base}/p/{resolved}"
 
+      # Direct url field — trust full URLs, validate relative paths
       url = elem.get("url")
       if url and isinstance(url, str):
          if url.startswith("http"):
             return url
-         return f"{base}{url}" if url.startswith("/") else f"{base}/{url}"
+         # Extract the slug portion from paths like "/p/anning" for validation
+         slug_part = url.rstrip("/").rsplit("/", 1)[-1] if "/" in url else url
+         if self._slug_looks_valid(slug_part, name):
+            return f"{base}{url}" if url.startswith("/") else f"{base}/{url}"
 
       for key in ("urlSlug", "productSlug"):
          slug = elem.get(key)
