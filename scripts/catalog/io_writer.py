@@ -10,58 +10,58 @@ from catalog.models import GameRecord, LetterItem
 from catalog.normalize import letter_bucket
 
 def write_catalog(out_dir: str, store: str, rows: Iterable[GameRecord]) -> None:
-   base = os.path.join(out_dir, store)
-   os.makedirs(base, exist_ok=True)
+    base = os.path.join(out_dir, store)
+    os.makedirs(base, exist_ok=True)
 
-   # Build per-letter arrays and the bang Map-as-array
-   buckets: dict[str, List[LetterItem]] = defaultdict(list)
-   bang: List[Tuple[str, dict]] = []
+    # Build per-letter arrays and the bang Map-as-array
+    buckets: dict[str, List[LetterItem]] = defaultdict(list)
+    bang: List[Tuple[str, dict]] = []
 
-   for rec in rows:
-      item = LetterItem(
-         name=rec.name,
-         type=rec.type,
-         price=rec.price,
-         image=str(rec.image),
-         href=str(rec.href),
-         uuid=rec.uuid,
-         platforms=rec.platforms,
-         rating=rec.rating if rec.rating else None
-      )
-      buckets[letter_bucket(rec.name)].append(item)
-      bang.append((rec.name, item.model_dump(mode="json")))
+    for rec in rows:
+        item = LetterItem(
+            name=rec.name,
+            type=rec.type,
+            price=rec.price,
+            image=str(rec.image),
+            href=str(rec.href),
+            uuid=rec.uuid,
+            platforms=rec.platforms,
+            rating=rec.rating if rec.rating else None
+        )
+        buckets[letter_bucket(rec.name)].append(item)
+        bang.append((rec.name, item.model_dump(mode="json")))
 
-   # Write per-letter
-   for k in sorted(buckets):
-      arr = buckets[k]
-      with open(os.path.join(base, f"{k}.json"), "w", encoding="utf-8") as fp:
-         json.dump([i.model_dump(mode="json") for i in arr], fp, ensure_ascii=False, indent=4)
+    # Write per-letter
+    for k in sorted(buckets):
+        arr = buckets[k]
+        with open(os.path.join(base, f"{k}.json"), "w", encoding="utf-8") as fp:
+            json.dump([i.model_dump(mode="json") for i in arr], fp, ensure_ascii=False, indent=4)
 
-   # Write metadata and bang files
-   metadata_path = os.path.join(base, "$.json")
-   previous_size = None
-   if os.path.exists(metadata_path):
-      try:
-         with open(metadata_path, "r", encoding="utf-8") as fp:
-            previous = json.load(fp)
-      except (OSError, ValueError, TypeError):
-         previous = None
-      else:
-         if isinstance(previous, dict) and "size" in previous:
-            try:
-               previous_size = int(previous["size"])
-            except (TypeError, ValueError):
-               previous_size = None
+    # Write metadata and bang files
+    metadata_path = os.path.join(base, "$.json")
+    previous_size = None
+    if os.path.exists(metadata_path):
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as fp:
+                previous = json.load(fp)
+        except (OSError, ValueError, TypeError):
+            previous = None
+        else:
+            if isinstance(previous, dict) and "size" in previous:
+                try:
+                    previous_size = int(previous["size"])
+                except (TypeError, ValueError):
+                    previous_size = None
 
-   size = len(bang)
-   delta = size - (previous_size if previous_size is not None else size)
-   metadata = {
-      "size": size,
-      "diff": delta,
-      "date": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-   }
-   with open(metadata_path, "w", encoding="utf-8") as fp:
-      json.dump(metadata, fp, ensure_ascii=False, indent=4)
+    size = len(bang)
+    delta = size - (previous_size if previous_size is not None else size)
+    metadata = {
+        "size": size,
+        "diff": delta,
+        "date": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+    }
+    with open(metadata_path, "w", encoding="utf-8") as fp:
+        json.dump(metadata, fp, ensure_ascii=False, indent=4)
 
-   with open(os.path.join(base, "!.json"), "w", encoding="utf-8") as fp:
-      json.dump(bang, fp, ensure_ascii=False, indent=4)
+    with open(os.path.join(base, "!.json"), "w", encoding="utf-8") as fp:
+        json.dump(bang, fp, ensure_ascii=False, indent=4)

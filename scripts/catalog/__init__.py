@@ -15,22 +15,22 @@ from catalog.io_writer import write_catalog
 from catalog.runner import run_adapter
 
 __all__ = [
-   "GameRecord",
-   "LetterItem",
-   "Adapter",
-   "AdapterConfig",
-   "Capabilities",
-   "write_catalog",
-   "run_adapter",
+    "GameRecord",
+    "LetterItem",
+    "Adapter",
+    "AdapterConfig",
+    "Capabilities",
+    "write_catalog",
+    "run_adapter",
 ]
 
 # Convenience: top-level async entry for single-store crawling
 import asyncio
 
 async def crawl(store_adapter: Adapter, out_dir: str) -> None:
-   """Convenience alias for catalog.runner.run_adapter."""
-   await run_adapter(store_adapter, out_dir)
+    """Convenience alias for catalog.runner.run_adapter."""
+    await run_adapter(store_adapter, out_dir)
 
 def crawl_sync(store_adapter: Adapter, out_dir: str) -> None:
-   """Synchronous alias for crawl(); wraps asyncio.run."""
-   asyncio.run(run_adapter(store_adapter, out_dir))
+    """Synchronous alias for crawl(); wraps asyncio.run."""
+    asyncio.run(run_adapter(store_adapter, out_dir))

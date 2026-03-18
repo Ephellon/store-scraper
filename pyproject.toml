@@ -7,13 +7,13 @@ readme = "README.md"
 license = {text = "MIT"}
 authors = [{name="Ephellon"}]
 dependencies = [
-   "httpx[http2]>=0.27",
-   "pydantic>=2.7",
-   "tenacity>=8.2",
-   "aiolimiter>=1.1.0",
-   "rich>=13.7",
-   "sqlalchemy>=2.0.44",
-   "curl_cffi>=0.7",
+    "httpx[http2]>=0.27",
+    "pydantic>=2.7",
+    "tenacity>=8.2",
+    "aiolimiter>=1.1.0",
+    "rich>=13.7",
+    "sqlalchemy>=2.0.44",
+    "curl_cffi>=0.7",
 ]
 
 [project.optional-dependencies]

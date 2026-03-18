@@ -15,294 +15,294 @@ API_APP_LIST_V2 = "https://api.steampowered.com/ISteamApps/GetAppList/v2/"
 API_APP_LIST_V1 = "https://api.steampowered.com/IStoreService/GetAppList/v1/"
 
 class SteamAdapter(Adapter):
-   """
-   Steam adapter (no auth required).
+    """
+    Steam adapter (no auth required).
 
-   Strategy:
+    Strategy:
      1) Hit 'featuredcategories' to get a broad, fresh set of appids (top_sellers, specials, new_releases, coming_soon).
      2) Hydrate each appid via 'appdetails' and normalize into GameRecord.
 
-   Notes:
+    Notes:
      - Skips non-'game' types by default (DLC/soundtracks/tools). Toggle with include_types if desired.
      - Price strings: prefers Steam's display via price_overview; falls back to 'Free' or 'Unavailable'.
      - Platforms: maps Windows/Mac/Linux flags to canonical names.
-   """
-   store = "steam"
-   capabilities = Capabilities(pagination=False, returns_partial_price=False, yields_dlc=False)
+    """
+    store = "steam"
+    capabilities = Capabilities(pagination=False, returns_partial_price=False, yields_dlc=False)
 
-   def __init__(self, *, config: AdapterConfig | None = None,
+    def __init__(self, *, config: AdapterConfig | None = None,
                 include_types: Optional[List[str]] = None,  # e.g., ["game","dlc"]
                 buckets: Optional[List[str]] = None,        # override featured buckets
                 app_list_url: Optional[str] = None,
                 api_key: Optional[str] = None,
                 **kw):
-      if config is None:
-         config = AdapterConfig()
-      # Steam is sensitive to aggressive polling; enforce 1 request per second.
-      config.rps = 1.0
+        if config is None:
+            config = AdapterConfig()
+        # Steam is sensitive to aggressive polling; enforce 1 request per second.
+        config.rps = 1.0
 
-      super().__init__(config=config, **kw)
-      self.include_types = [t.lower() for t in (include_types or ["game"])]
-      self.buckets = buckets or ["coming_soon", "specials", "top_sellers", "new_releases"]
-      # allow passing via ctor or environment; empty string treated as absent
-      self._api_key = (api_key if api_key is not None else os.getenv("STEAM_API_KEY")) or None
-      self._use_v1 = bool(app_list_url == API_APP_LIST_V1 or (app_list_url is None and self._api_key))
-      self._app_list_url = (API_APP_LIST_V1 if self._use_v1 else API_APP_LIST_V2)
-      skip_path = os.getenv("STEAM_SKIP_FILE")
-      self._skip_file = Path(skip_path) if skip_path else Path(__file__).with_name(".steamignore")
-      self._skip_appids: Set[str] = self._load_skip_appids()
-      self._request_count = 0
-      self._resume_appids: Set[str] = set()
+        super().__init__(config=config, **kw)
+        self.include_types = [t.lower() for t in (include_types or ["game"])]
+        self.buckets = buckets or ["coming_soon", "specials", "top_sellers", "new_releases"]
+        # allow passing via ctor or environment; empty string treated as absent
+        self._api_key = (api_key if api_key is not None else os.getenv("STEAM_API_KEY")) or None
+        self._use_v1 = bool(app_list_url == API_APP_LIST_V1 or (app_list_url is None and self._api_key))
+        self._app_list_url = (API_APP_LIST_V1 if self._use_v1 else API_APP_LIST_V2)
+        skip_path = os.getenv("STEAM_SKIP_FILE")
+        self._skip_file = Path(skip_path) if skip_path else Path(__file__).with_name(".steamignore")
+        self._skip_appids: Set[str] = self._load_skip_appids()
+        self._request_count = 0
+        self._resume_appids: Set[str] = set()
 
-   async def iter_games(self) -> AsyncIterator[GameRecord]:
-      # Step 1: seed appids from the global Steam app list, fallback to featured categories
-      appids = await self._fetch_app_list_ids()
-      if not appids:
-         featured = await self.get_json(API_FEATURED, params={"l": "english"})
-         appids = self._extract_featured_appids(featured, self.buckets)
+    async def iter_games(self) -> AsyncIterator[GameRecord]:
+        # Step 1: seed appids from the global Steam app list, fallback to featured categories
+        appids = await self._fetch_app_list_ids()
+        if not appids:
+            featured = await self.get_json(API_FEATURED, params={"l": "english"})
+            appids = self._extract_featured_appids(featured, self.buckets)
 
-      # Step 2: hydrate via appdetails (region-aware pricing via cc)
-      seen: Set[str] = set()
-      for appid in appids:
-         if appid in self._resume_appids:
-            self._resume_appids.discard(appid)
-            continue
-         if self.skip_appid(appid):
-            continue
+        # Step 2: hydrate via appdetails (region-aware pricing via cc)
+        seen: Set[str] = set()
+        for appid in appids:
+            if appid in self._resume_appids:
+                self._resume_appids.discard(appid)
+                continue
+            if self.skip_appid(appid):
+                continue
 
-         data = await self._fetch_appdetails(appid)
-         if not data:
-            continue
+            data = await self._fetch_appdetails(appid)
+            if not data:
+                continue
 
-         rec = self._normalize_app(appid, data)
-         if rec:
-            key = self._record_key(rec)
-            if key and key in seen:
-               continue
-            if key:
-               seen.add(key)
-            yield rec
-         await asyncio.sleep(0.05)  # polite jitter between app calls
+            rec = self._normalize_app(appid, data)
+            if rec:
+                key = self._record_key(rec)
+                if key and key in seen:
+                    continue
+                if key:
+                    seen.add(key)
+                yield rec
+            await asyncio.sleep(0.05)  # polite jitter between app calls
 
-   def resume(self, records: List[GameRecord]) -> None:
-      super().resume(records)
-      for record in records:
-         if record.store != self.store:
-            continue
-         if record.uuid:
-            self._resume_appids.add(str(record.uuid))
+    def resume(self, records: List[GameRecord]) -> None:
+        super().resume(records)
+        for record in records:
+            if record.store != self.store:
+                continue
+            if record.uuid:
+                self._resume_appids.add(str(record.uuid))
 
-   async def request(self, method: str, url: str, **kw):
-      kw.setdefault("retry_429_wait", 15.0)
-      response = await super().request(method, url, **kw)
-      self._request_count += 1
-      await asyncio.sleep(1.0)
-      return response
+    async def request(self, method: str, url: str, **kw):
+        kw.setdefault("retry_429_wait", 15.0)
+        response = await super().request(method, url, **kw)
+        self._request_count += 1
+        await asyncio.sleep(1.0)
+        return response
 
-   # ---------------- helpers ----------------
+    # ---------------- helpers ----------------
 
-   async def _fetch_app_list_ids(self) -> List[str]:
-      if self._use_v1:
-         return await self._fetch_paginated_app_list_ids()
+    async def _fetch_app_list_ids(self) -> List[str]:
+        if self._use_v1:
+            return await self._fetch_paginated_app_list_ids()
 
-      params = self._app_list_params()
-      js: Optional[Dict[str, Any]] = None
-      try:
-         js = await self.get_json(self._app_list_url, params=params)
-      except Exception:
-         js = self._load_local_app_list()
-
-      if not js:
-         return []
-
-      return self._extract_appids_from_response(js, seen=set())
-
-   async def _fetch_paginated_app_list_ids(self) -> List[str]:
-      max_results = 50000
-      last_appid = 0
-      ids: List[str] = []
-      seen: set[str] = set()
-      used_local = False
-
-      while True:
-         params = self._app_list_params(last_appid=last_appid, max_results=max_results)
-         try:
+        params = self._app_list_params()
+        js: Optional[Dict[str, Any]] = None
+        try:
             js = await self.get_json(self._app_list_url, params=params)
-         except Exception:
-            if ids:
-               break
+        except Exception:
             js = self._load_local_app_list()
-            used_local = bool(js)
-         if not js:
-            break
 
-         page_ids = self._extract_appids_from_response(js, seen=seen)
-         if not page_ids:
-            break
+        if not js:
+            return []
 
-         ids.extend(page_ids)
-         if used_local:
-            break
-         try:
-            last_appid = int(page_ids[-1])
-         except Exception:
-            break
+        return self._extract_appids_from_response(js, seen=set())
 
-         if len(page_ids) < max_results:
-            break
+    async def _fetch_paginated_app_list_ids(self) -> List[str]:
+        max_results = 50000
+        last_appid = 0
+        ids: List[str] = []
+        seen: set[str] = set()
+        used_local = False
 
-      return ids
-
-   def _extract_appids_from_response(self, js: Dict[str, Any], *, seen: Set[str]) -> List[str]:
-      #           ↓ App-List v2        ↓ App-List v1
-      apps = (((  js.get("applist") or js.get("response") or {}).get("apps")) or [])
-      ids: List[str] = []
-      for entry in apps:
-         appid = entry.get("appid")
-         if not isinstance(appid, int):
-            continue
-         appid_str = str(appid)
-         if appid_str in seen:
-            continue
-         seen.add(appid_str)
-         ids.append(appid_str)
-      return ids
-
-   def _extract_featured_appids(self, featured: Dict[str, Any], buckets: List[str]) -> List[str]:
-      ids: List[str] = []
-      for b in buckets:
-         items = (featured.get(b) or {}).get("items") or []
-         for it in items:
+        while True:
+            params = self._app_list_params(last_appid=last_appid, max_results=max_results)
             try:
-               ids.append(str(it["id"]))
+                js = await self.get_json(self._app_list_url, params=params)
             except Exception:
-               continue
-      # de-dup while preserving order
-      seen = set()
-      return [a for a in ids if not (a in seen or seen.add(a))]
+                if ids:
+                    break
+                js = self._load_local_app_list()
+                used_local = bool(js)
+            if not js:
+                break
 
-   def _app_list_params(self, *, last_appid: int = 0, max_results: int = 50000) -> Dict[str, Any]:
-      if self._use_v1:
-         params: Dict[str, Any] = {"max_results": max_results, "last_appid": last_appid}
-         if self._api_key:
+            page_ids = self._extract_appids_from_response(js, seen=seen)
+            if not page_ids:
+                break
+
+            ids.extend(page_ids)
+            if used_local:
+                break
+            try:
+                last_appid = int(page_ids[-1])
+            except Exception:
+                break
+
+            if len(page_ids) < max_results:
+                break
+
+        return ids
+
+    def _extract_appids_from_response(self, js: Dict[str, Any], *, seen: Set[str]) -> List[str]:
+        #           ↓ App-List v2        ↓ App-List v1
+        apps = (((  js.get("applist") or js.get("response") or {}).get("apps")) or [])
+        ids: List[str] = []
+        for entry in apps:
+            appid = entry.get("appid")
+            if not isinstance(appid, int):
+                continue
+            appid_str = str(appid)
+            if appid_str in seen:
+                continue
+            seen.add(appid_str)
+            ids.append(appid_str)
+        return ids
+
+    def _extract_featured_appids(self, featured: Dict[str, Any], buckets: List[str]) -> List[str]:
+        ids: List[str] = []
+        for b in buckets:
+            items = (featured.get(b) or {}).get("items") or []
+            for it in items:
+                try:
+                    ids.append(str(it["id"]))
+                except Exception:
+                    continue
+        # de-dup while preserving order
+        seen = set()
+        return [a for a in ids if not (a in seen or seen.add(a))]
+
+    def _app_list_params(self, *, last_appid: int = 0, max_results: int = 50000) -> Dict[str, Any]:
+        if self._use_v1:
+            params: Dict[str, Any] = {"max_results": max_results, "last_appid": last_appid}
+            if self._api_key:
+                params["key"] = self._api_key
+            return params
+
+        params = {"format": "json"}
+        if self._api_key:
             params["key"] = self._api_key
-         return params
+        return params
 
-      params = {"format": "json"}
-      if self._api_key:
-         params["key"] = self._api_key
-      return params
+    def _load_local_app_list(self) -> Optional[Dict[str, Any]]:
+        try:
+            with Path(__file__).with_name("steam.json").open("r", encoding="utf-8") as fh:
+                return json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            return None
 
-   def _load_local_app_list(self) -> Optional[Dict[str, Any]]:
-      try:
-         with Path(__file__).with_name("steam.json").open("r", encoding="utf-8") as fh:
-            return json.load(fh)
-      except (OSError, json.JSONDecodeError):
-         return None
+    def _record_key(self, rec: GameRecord) -> Optional[str]:
+        candidates = (
+            rec.uuid,
+            rec.href,
+            rec.name and f"{rec.store}:{rec.name}",
+        )
+        return next((value for value in map(lambda candidate: candidate, candidates) if value), None)
 
-   def _record_key(self, rec: GameRecord) -> Optional[str]:
-      candidates = (
-         rec.uuid,
-         rec.href,
-         rec.name and f"{rec.store}:{rec.name}",
-      )
-      return next((value for value in map(lambda candidate: candidate, candidates) if value), None)
+    async def _fetch_appdetails(self, appid: str) -> Optional[Dict[str, Any]]:
+        js = await self.get_json(
+            API_DETAILS,
+            params={"appids": appid, "l": "english", "cc": self.config.country}
+        )
+        payload = js.get(str(appid))
+        if not payload or not payload.get("success"):
+            return None
+        return payload.get("data") or None
 
-   async def _fetch_appdetails(self, appid: str) -> Optional[Dict[str, Any]]:
-      js = await self.get_json(
-         API_DETAILS,
-         params={"appids": appid, "l": "english", "cc": self.config.country}
-      )
-      payload = js.get(str(appid))
-      if not payload or not payload.get("success"):
-         return None
-      return payload.get("data") or None
+    def _load_skip_appids(self) -> Set[str]:
+        try:
+            with self._skip_file.open("r", encoding="utf-8") as fh:
+                ids = set()
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    ids.add(line)
+                return ids
+        except FileNotFoundError:
+            return set()
+        except OSError:
+            return set()
 
-   def _load_skip_appids(self) -> Set[str]:
-      try:
-         with self._skip_file.open("r", encoding="utf-8") as fh:
-            ids = set()
-            for line in fh:
-               line = line.strip()
-               if not line or line.startswith("#"):
-                  continue
-               ids.add(line)
-            return ids
-      except FileNotFoundError:
-         return set()
-      except OSError:
-         return set()
+    def skip_appid(self, appid: str, *, app_type: Optional[str] = None) -> bool:
+        appid_str = str(appid)
+        if app_type is None:
+            return appid_str in self._skip_appids
 
-   def skip_appid(self, appid: str, *, app_type: Optional[str] = None) -> bool:
-      appid_str = str(appid)
-      if app_type is None:
-         return appid_str in self._skip_appids
-
-      normalized_type = app_type.lower()
-      should_skip = bool(self.include_types) and normalized_type and normalized_type not in self.include_types
-      if should_skip and appid_str not in self._skip_appids:
-         self._skip_appids.add(appid_str)
-         try:
-            self._skip_file.parent.mkdir(parents=True, exist_ok=True)
-            with self._skip_file.open("a", encoding="utf-8") as fh:
-               fh.write(f"{appid_str}\n")
-         except OSError:
-            pass
-      return should_skip
-
-   def _normalize_app(self, appid: str, app: Dict[str, Any]) -> Optional[GameRecord]:
-      # Filter by type
-      app_type = (app.get("type") or "").lower()
-      if self.include_types and app_type and app_type not in self.include_types:
-         self.skip_appid(appid, app_type=app_type)
-         return None
-
-      # Title
-      name_raw = app.get("name") or ""
-      name = normalize_game_name(name_raw)
-      if not name:
-         return None
-
-      # Price string
-      p = app.get("price_overview")
-      if isinstance(p, dict):
-         # price_overview.final is in cents
-         try:
-            amount = float(p["initial"]) / 100.0
-         except Exception:
+        normalized_type = app_type.lower()
+        should_skip = bool(self.include_types) and normalized_type and normalized_type not in self.include_types
+        if should_skip and appid_str not in self._skip_appids:
+            self._skip_appids.add(appid_str)
             try:
-               amount = float(p["final"]) / 100.0
+                self._skip_file.parent.mkdir(parents=True, exist_ok=True)
+                with self._skip_file.open("a", encoding="utf-8") as fh:
+                    fh.write(f"{appid_str}\n")
+            except OSError:
+                pass
+        return should_skip
+
+    def _normalize_app(self, appid: str, app: Dict[str, Any]) -> Optional[GameRecord]:
+        # Filter by type
+        app_type = (app.get("type") or "").lower()
+        if self.include_types and app_type and app_type not in self.include_types:
+            self.skip_appid(appid, app_type=app_type)
+            return None
+
+        # Title
+        name_raw = app.get("name") or ""
+        name = normalize_game_name(name_raw)
+        if not name:
+            return None
+
+        # Price string
+        p = app.get("price_overview")
+        if isinstance(p, dict):
+            # price_overview.final is in cents
+            try:
+                amount = float(p["initial"]) / 100.0
             except Exception:
-               amount = None
-         currency = p.get("currency")
-         # If discount present, we still output the discounted display (no strike-through in schema)
-         price_str = price_to_string(amount, currency)
-      else:
-         price_str = "Free" if app.get("is_free") else "Unavailable"
+                try:
+                    amount = float(p["final"]) / 100.0
+                except Exception:
+                    amount = None
+            currency = p.get("currency")
+            # If discount present, we still output the discounted display (no strike-through in schema)
+            price_str = price_to_string(amount, currency)
+        else:
+            price_str = "Free" if app.get("is_free") else "Unavailable"
 
-      # Image / href
-      image = app.get("header_image") or ""
-      href = f"https://store.steampowered.com/app/{appid}"
+        # Image / href
+        image = app.get("header_image") or ""
+        href = f"https://store.steampowered.com/app/{appid}"
 
-      # Platforms
-      platforms: List[str] = []
-      plat = app.get("platforms") or {}
-      if plat.get("windows"): platforms.append("Windows")
-      if plat.get("mac"):     platforms.append("Mac")
-      if plat.get("linux"):   platforms.append("Linux")
+        # Platforms
+        platforms: List[str] = []
+        plat = app.get("platforms") or {}
+        if plat.get("windows"): platforms.append("Windows")
+        if plat.get("mac"):     platforms.append("Mac")
+        if plat.get("linux"):   platforms.append("Linux")
 
-      # UUID: use appid (string)
-      uuid = str(appid)
+        # UUID: use appid (string)
+        uuid = str(appid)
 
-      return GameRecord(
-         store="steam",
-         name=name,
-         price=price_str,
-         image=str(image) if image else "https://store.steampowered.com/public/shared/images/header/globalheader_logo.png",
-         href=href,
-         uuid=uuid,
-         platforms=platforms,
-         rating=None,
-         type="game" if app_type == "game" else app_type or None,
-         extra={"steam_type": app.get("type")}
-      )
+        return GameRecord(
+            store="steam",
+            name=name,
+            price=price_str,
+            image=str(image) if image else "https://store.steampowered.com/public/shared/images/header/globalheader_logo.png",
+            href=href,
+            uuid=uuid,
+            platforms=platforms,
+            rating=None,
+            type="game" if app_type == "game" else app_type or None,
+            extra={"steam_type": app.get("type")}
+        )
