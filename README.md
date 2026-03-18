@@ -96,12 +96,12 @@ Each store uses a dedicated adapter implementing a common interface.
 This makes the project modular and easy to extend.
 
 ```
-/adapters
- ├─ steam.py       → Steam Store API
- ├─ psn.py         → PlayStation Store API
- ├─ xbox.py        → Microsoft Store API
- ├─ nintendo.py    → Nintendo eShop
- └─ epic.py        → Epic Games
+adapters/
+    ├─ steam.py       → Steam Store API
+    ├─ psn.py         → PlayStation Store API
+    ├─ xbox.py        → Microsoft Store API
+    ├─ nintendo.py    → Nintendo eShop
+    └─ epic.py        → Epic Games
 ```
 
 Adapters yield normalized `GameRecord` objects that match the schema above.
@@ -194,13 +194,13 @@ Outputs will appear as:
 
 ```
 out/
- └─ steam/
-    ├─ !.json
-    ├─ $.json
-    ├─ _.json
-    ├─ a.json
-    ├─ b.json
-    └─ ...
+    └─ steam/
+        ├─ !.json
+        ├─ $.json
+        ├─ _.json
+        ├─ a.json
+        ├─ b.json
+        └─ ...
 ```
 
 ---
