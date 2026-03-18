@@ -47,7 +47,7 @@ _PLATFORM_NOISE_RX = re.compile(
       series\s+[sx](?:\|?[sx])?
       |
       # Nintendo variants
-      (?:nintendo\s+)?switch(?:\s*[12])?
+      (?:nintendo\s+)?switch(?:[\s\-]*[12])?
    )
    \b
    \s*
