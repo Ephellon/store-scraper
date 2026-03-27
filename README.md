@@ -262,7 +262,7 @@ store-scraper/
 
 ## Contributing
 
-* Follow 3-space indentation for Python.
+* Follow 4-space indentation for Python.
 * Run `ruff` and `pytest` before submitting changes.
 * Each adapter should return clean `GameRecord` objects.
 * PRs adding new stores should include sample output and documentation.
