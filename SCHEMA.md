@@ -1,5 +1,6 @@
 # This is the project's layout
 
+```
 store-scraper/
     ├─ scripts/
     │   ├─ catalog/
@@ -29,3 +30,4 @@ store-scraper/
     ├─ pyproject.toml               # Project dependency file
     ├─ README.md                    # Project overview
     └─ SCHEMA.md                    # This file, project outline
+```
