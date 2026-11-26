@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 from pathlib import Path
 import argparse
 
@@ -10,9 +11,12 @@ def load_json(path: Path):
 
 
 def save_json(path: Path, data):
-    with path.open("w", encoding="utf-8") as f:
+    # Write to a temp file then swap, so an interrupted run can't truncate the cache
+    tmp = path.with_name(path.name + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=3)
         f.write("\n")
+    os.replace(tmp, path)
 
 
 def main():

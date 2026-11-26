@@ -3,6 +3,7 @@
 *.txt
 *.db
 *.db-*
+*.schema
 *-update.*
 
 # Ignore these folders
