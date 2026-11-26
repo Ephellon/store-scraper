@@ -63,6 +63,11 @@ class TestNormalizePlatform:
     def test_mac(self):
         assert normalize_platform("Mac") == "Mac"
 
+    def test_mac_aliases(self):
+        assert normalize_platform("Mac OS") == "Mac"
+        assert normalize_platform("macOS") == "Mac"
+        assert normalize_platform("OSX") == "Mac"
+
     def test_steam_maps_to_pc(self):
         assert normalize_platform("Steam") == "PC"
 

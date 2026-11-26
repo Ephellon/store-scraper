@@ -78,6 +78,17 @@ class TestExtractPlatforms:
         result = _extract_platforms(attrs, tags)
         assert result.count("Windows") == 1
 
+    def test_platform_group_tags(self):
+        tags = [
+            {"id": "9547", "name": "Windows", "groupName": "platform"},
+            {"id": "10719", "name": "Mac OS", "groupName": "platform"},
+            {"id": "1216", "name": "Action", "groupName": "genre"},
+        ]
+        assert _extract_platforms([], tags) == ["Windows", "Mac"]
+
+    def test_id_only_tags_default_windows(self):
+        assert _extract_platforms([], [{"id": "10719"}]) == ["Windows"]
+
 
 # ─── _extract_rating ─────────────────────────────────────────────────────
 
@@ -126,6 +137,42 @@ class TestCurlCffiGating:
     def test_cffi_session_none_before_aenter(self):
         adapter = EpicAdapter(config=AdapterConfig(country="US", locale="en-US"))
         assert adapter._cffi_session is None
+
+
+# ─── Tag dictionary resolution ──────────────────────────────────────────
+
+class TestResolveTags:
+    def _make_adapter(self):
+        adapter = EpicAdapter(config=AdapterConfig(country="US", locale="en-US"))
+        adapter._tag_dict = {
+            "9547": {"id": "9547", "name": "Windows", "groupName": "platform"},
+            "10719": {"id": "10719", "name": "Mac OS", "groupName": "platform"},
+        }
+        return adapter
+
+    def test_fills_names_from_dictionary(self):
+        adapter = self._make_adapter()
+        resolved = adapter._resolve_tags([{"id": "10719"}, {"id": "99999"}])
+        assert resolved[0] == {"id": "10719", "name": "Mac OS", "groupName": "platform"}
+        assert resolved[1] == {"id": "99999"}
+
+    def test_keeps_existing_names(self):
+        adapter = self._make_adapter()
+        resolved = adapter._resolve_tags([{"id": "9547", "name": "PC"}])
+        assert resolved[0]["name"] == "PC"
+
+    def test_normalize_element_uses_dictionary(self):
+        adapter = self._make_adapter()
+        elem = {
+            "title": "Some Game",
+            "id": "g1",
+            "urlSlug": "some-game",
+            "tags": [{"id": "9547"}, {"id": "10719"}],
+            "categories": [{"path": "games/edition/base"}],
+        }
+        rec = adapter._normalize_element(elem)
+        assert rec is not None
+        assert rec.platforms == ["Windows", "Mac"]
 
 
 # ─── EpicAdapter._normalize_element ─────────────────────────────────────

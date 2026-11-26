@@ -45,6 +45,13 @@ EPIC_LIMIT = DomainLimiter(2.0)
 SEARCH_STORE_HASH = "29d49ab31d438cd90be2d554d2d54704951e4223a8fcd290fcf68308841a1979"
 CATALOG_OFFER_HASH = "ec112951b1824e1e215daecae17db4069c737295d4a697ddb9832923f93a326e"
 
+# searchStoreQuery only returns tag ids, so the id → name/group dictionary is
+# fetched once per crawl with this (non-persisted) query.
+TAGS_QUERY = (
+    "query tags($locale: String) { Catalog { tags(namespace: \"epic\", "
+    "locale: $locale, start: 0, count: 1000) { elements { id name groupName } } } }"
+)
+
 # ── REST endpoints (Akamai CDN, no CF) ───────────────────────────────────
 FREE_GAMES_URL = "https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions"
 STOREFRONT_URL = "https://store-site-backend-static-ipv4.ak.epicgames.com/storefrontLayout"
@@ -131,12 +138,12 @@ def _extract_platforms(
                 if part:
                     platforms.append(part)
 
-    platform_tag_names = {"windows", "mac", "macos", "linux"}
+    platform_tag_names = {"windows", "mac", "macos", "mac os", "osx", "linux"}
     for tag in tags or []:
         if not isinstance(tag, dict):
             continue
         name = (tag.get("name") or "").strip()
-        if name.lower() in platform_tag_names:
+        if name and (tag.get("groupName") == "platform" or name.lower() in platform_tag_names):
             platforms.append(name)
 
     if not platforms:
@@ -173,6 +180,7 @@ class EpicAdapter(Adapter):
         self._graphql_available = HAS_CURL_CFFI
         self._cffi_session: Optional[CffiSession] = None if not HAS_CURL_CFFI else None
         self._slug_cache: Dict[str, Optional[str]] = {}  # "sandboxId:offerId" → urlSlug
+        self._tag_dict: Dict[str, Dict[str, Any]] = {}   # tag id → {id, name, groupName}
 
     # ── lifecycle: manage curl_cffi session alongside the httpx client ────
 
@@ -224,6 +232,8 @@ class EpicAdapter(Adapter):
 
     async def iter_games(self) -> AsyncIterator[GameRecord]:
         seen: Set[str] = set()
+
+        await self._load_tag_dictionary()
 
         # Strategy A: GraphQL via curl_cffi (bypasses CF TLS fingerprinting)
         if self._graphql_available and self._cffi_session is not None:
@@ -281,6 +291,50 @@ class EpicAdapter(Adapter):
             return False
         seen.add(key)
         return True
+
+    # ── Tag dictionary ────────────────────────────────────────────────────
+
+    async def _load_tag_dictionary(self) -> None:
+        """Fetch the tag id → name/group map (searchStore only returns ids)."""
+        locale = self.config.locale.replace("_", "-")
+        body = {"query": TAGS_QUERY, "variables": {"locale": locale}}
+        headers = {**self._rest_headers(), "Content-Type": "application/json"}
+
+        try:
+            if self._cffi_session is not None:
+                resp = await self._cffi_session.post(
+                    self.endpoints.graphql_url, json=body, headers=headers, timeout=30,
+                )
+                resp.raise_for_status()
+            else:
+                resp = await self.request(
+                    "POST", self.endpoints.graphql_url, json=body, headers=headers,
+                )
+            js = resp.json()
+        except Exception as exc:
+            self.log.warning("epic: tag dictionary request failed (platforms from tags unavailable): %s", exc)
+            return
+
+        elements = (
+            (js.get("data") or {})
+            .get("Catalog", {})
+            .get("tags", {})
+            .get("elements")
+        ) or []
+        self._tag_dict = {
+            str(t["id"]): t for t in elements if isinstance(t, dict) and t.get("id")
+        }
+        self.log.info("epic: loaded %d tags", len(self._tag_dict))
+
+    def _resolve_tags(self, tags: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Fill in missing tag name/groupName from the tag dictionary."""
+        out: List[Dict[str, Any]] = []
+        for tag in tags or []:
+            if not isinstance(tag, dict):
+                continue
+            known = self._tag_dict.get(str(tag.get("id")))
+            out.append({**known, **{k: v for k, v in tag.items() if v}} if known else tag)
+        return out
 
     # ── Strategy A: GraphQL via curl_cffi ─────────────────────────────────
 
@@ -545,7 +599,7 @@ class EpicAdapter(Adapter):
         price_str = self._extract_price(elem)
 
         custom_attrs = elem.get("customAttributes") or []
-        tags = elem.get("tags") or []
+        tags = self._resolve_tags(elem.get("tags") or [])
         platforms = _extract_platforms(custom_attrs, tags)
         rating = _extract_rating(tags)
 

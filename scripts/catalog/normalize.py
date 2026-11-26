@@ -110,6 +110,8 @@ _PLATFORM_MAP = {
     "unix": "Unix",
 
     "mac": "Mac",
+    "macos": "Mac",
+    "osx": "Mac",
 
     "pc": "PC",
     "steam": "PC",
