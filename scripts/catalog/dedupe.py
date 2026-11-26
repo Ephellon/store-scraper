@@ -1,6 +1,6 @@
 # catalog/dedupe.py
 import re
-from typing import Dict, Tuple, List
+from typing import Dict, List
 from catalog.models import GameRecord
 from catalog.normalize import strip_edition_noise
 

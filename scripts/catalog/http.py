@@ -1,4 +1,5 @@
-import asyncio, random
+import asyncio
+import random
 from contextlib import asynccontextmanager
 import httpx
 from aiolimiter import AsyncLimiter
@@ -50,8 +51,10 @@ async def fetch(client: httpx.AsyncClient, method: str, url: str, *,
                 else:
                     ra = r.headers.get("Retry-After")
                     if ra:
-                        try: wait = float(ra)
-                        except: ...
+                        try:
+                            wait = float(ra)
+                        except ValueError:
+                            pass
                 await asyncio.sleep(wait)
                 continue
             r.raise_for_status()

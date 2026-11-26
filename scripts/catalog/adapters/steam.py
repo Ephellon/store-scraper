@@ -287,9 +287,9 @@ class SteamAdapter(Adapter):
         # Platforms
         platforms: List[str] = []
         plat = app.get("platforms") or {}
-        if plat.get("windows"): platforms.append("Windows")
-        if plat.get("mac"):     platforms.append("Mac")
-        if plat.get("linux"):   platforms.append("Linux")
+        for key, label in (("windows", "Windows"), ("mac", "Mac"), ("linux", "Linux")):
+            if plat.get(key):
+                platforms.append(label)
 
         # UUID: use appid (string)
         uuid = str(appid)

@@ -1,16 +1,12 @@
 """Tests for catalog.normalize — verify maps are actually applied."""
-import pytest
 
 from catalog.normalize import (
-    clean_title,
     normalize_game_name,
     normalize_platform,
     normalize_platforms,
     normalize_rating,
     strip_edition_noise,
     price_to_string,
-    letter_bucket,
-    parse_price_string,
 )
 
 

@@ -1,5 +1,4 @@
 """Tests for catalog.adapters.epic — normalization, helpers, and curl_cffi gating."""
-import pytest
 
 from catalog.adapters.epic import (
     EpicAdapter,
@@ -220,7 +219,7 @@ class TestNormalizeElement:
         assert rec.name == "Fortnite"  # trademark stripped
         assert rec.store == "epic"
         assert rec.uuid == "abc123"
-        assert rec.image == "https://ex.com/fortnite.png"
+        assert str(rec.image) == "https://ex.com/fortnite.png"
         assert "Windows" in rec.platforms
         assert "Mac" in rec.platforms
         assert rec.rating == "teen"
